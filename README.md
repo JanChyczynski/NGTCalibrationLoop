@@ -187,3 +187,10 @@ Step 4 loop takes all available ALCARECO files available at a given time that we
 
 ## Nota Bene
 There are quite a lot of issues remaining, still. The version we are at right now is the "functioning" version that was used for the demonstrator in the 2025 data taking. However, for 2026 data-taking, we plan to improve and have worked on all the issues. 
+
+## Public Presentations
+
+- **Zarucki, M.** (2026). *Demonstrating the Processing Chain for the Next Generation Triggers in the CMS Experiment*. 28th Conference on Computing in High Energy and Nuclear Physics (CHEP 2026), CMS, CERN. [DOI](https://doi.org/10.17181/txk7r-fsd29).
+
+- **Prendi, J.** (2026). *Conceptual Design and Operation of the Calibration Loop for the Next Generation Triggers in the CMS Experiment*. 28th Conference on Computing in High Energy and Nuclear Physics (CHEP 2026), CERN, 28 May 2026. [DOI](https://doi.org/10.17181/rv6ad-zpy87).
+
