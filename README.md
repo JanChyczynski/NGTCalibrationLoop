@@ -306,3 +306,24 @@ This is the same engine-agnostic layer `seed.py` is (it calls `seed.py`'s functi
 imports no orchestration engine), so any orchestrator pointed at the same `$NGT_DEV_HOME` reacts
 to the same scenario files unchanged.
 
+### Fault injection
+
+The three riskiest external dependencies can be made to fail on purpose, with realistic error
+text so a failure is debuggable: OMS (`connection_error`, `timeout`, `http_error` with a status,
+`malformed_json`), `cmsRun` and `uploadConditions.py` (`exit_code`). The vocabulary (`FaultSpec`,
+in `scenario-player/faults.py`) is shared by two backends: pytest applies it in-process through
+the `inject_fault` fixture and `tests/stubs/omsapi`'s `set_failure()`; the live workflow -- a
+separate OS process from whatever is running the loops -- arms it by writing JSON under
+`$NGT_DEV_HOME/faults/<target>.json`, which the fake `omsapi`, `bin/cmsRun` and
+`bin/uploadConditions.py` poll and consume. From a scenario file, a top-level `faults:` list arms
+faults at scheduled points on the same timeline (see
+`scenario-player/scenarios/fault_injection_demo.yaml`); by hand:
+
+```bash
+python3 scenario-player/seed.py arm-fault --target oms --mode connection_error --times 2
+python3 scenario-player/seed.py arm-fault --target cmsrun --mode exit_code --exit-code 139 \
+    --calibration EcalPedestals --step step2
+python3 scenario-player/seed.py list-faults
+python3 scenario-player/seed.py clear-faults
+```
+
