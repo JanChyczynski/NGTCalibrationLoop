@@ -64,9 +64,14 @@ Running Airflow (one shared instance, tmux sessions NGTAirflow*):
   logs <scheduler|dag-processor|api|triggerer>   Tail -f that process's tmux console log
 
 DAG control:
+  unpause-watch                           Unpause ngt_dags_watch.py's 4 DAGs (starts the AssetWatchers)
+  pause-watch                             Pause them again (stops the AssetWatchers)
 
 Resetting state (see scenario-player/sim_env.sh's setup/reset for the simulator's OWN state --
 \$NGT_DEV_HOME -- which none of these touch, except reset-scenario):
+  reset-watch                             Clear DAG-run history for ngt_dags_watch.py's 4 DAGs
+                                          (also drops the ngt://runs / ngt://files/* Assets +
+                                          their AssetStateStore rows)
   reset-airflow                           Full reset: drop + recreate the whole metadata DB
                                           (DAG-run history, variables, connections --
                                           everything) and re-migrate. Back to freshly-installed.
@@ -222,6 +227,63 @@ cmd_stop() {
   done
 }
 
+cmd_pause_unpause_watch() {
+  # ngt_dags_watch.py's 4 DAGs (the all-static-asset AssetWatcher design -- see
+  # its module docstring). AssetWatchers only run while their consuming DAG is
+  # unpaused, so this is also what starts/stops the 4 watchers in the
+  # triggerer. Unpause the process DAGs (file watchers) first, then the primer
+  # (run watcher), so the file watchers are live before a run is discovered.
+  local action="$1"
+  activate_venv
+  for calibration in "${CALIBRATIONS[@]}"; do
+    local lower; lower="$(echo "$calibration" | tr '[:upper:]' '[:lower:]')"
+    airflow dags "$action" -y "ngt_watch_process_${lower}"
+  done
+  airflow dags "$action" -y "ngt_watch_run_primer"
+}
+
+_reset_ngt_assets() {
+  # $1 label; $2/$3 AssetModel.uri LIKE patterns to remove. asset_state_store rows go
+  # with the AssetModel via ON DELETE CASCADE. A dev-script admin action, not task code
+  # (Airflow 3 forbids ORM access from task code, but this is a dev script); skipped with a
+  # warning if the ORM shape has drifted rather than failing the whole reset.
+  local label="$1" uri_a="$2" uri_b="$3"
+  URI_A="$uri_a" URI_B="$uri_b" python3 - <<'PY' || echo "  (Asset row cleanup skipped for $label -- use reset-airflow for a full wipe)"
+import os
+from airflow.utils.session import create_session
+from airflow.models.asset import AssetActive, AssetEvent, AssetModel
+from sqlalchemy import or_
+
+with create_session() as session:
+    q = session.query(AssetModel).filter(
+        or_(AssetModel.uri.like(os.environ["URI_A"]), AssetModel.uri.like(os.environ["URI_B"]))
+    )
+    assets = q.all()
+    ids = [a.id for a in assets]
+    uris = [a.uri for a in assets]
+    if ids:
+        session.query(AssetEvent).filter(AssetEvent.asset_id.in_(ids)).delete(synchronize_session=False)
+        session.query(AssetActive).filter(AssetActive.uri.in_(uris)).delete(synchronize_session=False)
+        session.query(AssetModel).filter(AssetModel.id.in_(ids)).delete(synchronize_session=False)
+    print(f"  Removed {len(ids)} Asset row(s).")
+PY
+}
+
+cmd_reset_watch() {
+  # Clears ngt_dags_watch.py's 4 DAGs + its 4 static
+  # Assets (ngt://runs, ngt://files/<cal>). Their AssetStateStore rows (the
+  # watchers' "seen runs" / "emitted files" watermarks) are removed with the
+  # AssetModel via ON DELETE CASCADE.
+  activate_venv
+  airflow dags delete -y ngt_watch_run_primer
+  for calibration in "${CALIBRATIONS[@]}"; do
+    local lower; lower="$(echo "$calibration" | tr '[:upper:]' '[:lower:]')"
+    airflow dags delete -y "ngt_watch_process_${lower}"
+  done
+  _reset_ngt_assets "ngt_dags_watch.py" "ngt://runs%" "ngt://files/%"
+  echo "Cleared DAG-run history for all 4 ngt_watch_* DAGs (ngt_dags_watch.py)."
+}
+
 cmd_reset_airflow() {
   # Drops and recreates the whole metadata DB schema -- all DAG-run
   # history, variables, connections, everything -- not just this repo's DAGs.
@@ -292,6 +354,9 @@ case "${1:-}" in
   status) cmd_status ;;
   ui) cmd_ui ;;
   logs) cmd_logs "${2:?scheduler, dag-processor, or api required}" ;;
+  unpause-watch) cmd_pause_unpause_watch unpause ;;
+  pause-watch) cmd_pause_unpause_watch pause ;;
+  reset-watch) cmd_reset_watch ;;
   reset-airflow) cmd_reset_airflow ;;
   reset-scenario) cmd_reset_scenario ;;
   seed-run)
