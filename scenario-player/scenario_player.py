@@ -56,16 +56,40 @@ file under $NGT_DEV_HOME/faults/ (via scenario-player/seed.py's arm_fault()) rat
 an in-memory call: this process and Airflow's own scheduler/triggerer/worker
 processes are different OS processes.
 
+A scenario can finally declare what *should* have happened, via a top-level
+`expect:` block listing the payloads that should have reached the dummy
+conditions DB -- see scenario-player/expectations.py for the full vocabulary.
+When one is present, playback is followed by a settle wait and a check, and
+the process exits nonzero if the result doesn't match, which is what makes a
+scenario a self-validating test rather than something a human has to eyeball:
+
+    expect:
+      payloads:
+        - {calibration: EcalPedestals, run: 398600, lumisections: 51-53}
+      allow_extra: {before: true}      # tolerate the intermediate re-harvests
+
 Usage:
   python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml
   python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --speed 5
   python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --dry-run
+  python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --validate-only
 
 --speed scales every delay (2 = twice as fast, 0.5 = half speed); --dry-run
-prints the resolved timeline and exits without touching $NGT_DEV_HOME or
-sleeping, useful for validating a scenario file or wiring it into a
-non-interactive test. This script only calls scenario-player/seed.py's library functions
-(seed_run/add_ls/end_run) -- it has no Airflow (or any engine) import at all.
+prints the resolved timeline and expectations and exits without touching
+$NGT_DEV_HOME or sleeping, useful for validating a scenario file or wiring it
+into a non-interactive test. --validate-only skips playback entirely and just
+checks the conditions DB as it stands, which is how the same `expect:` block
+can be used against the live Airflow demo, where
+airflow_automation/airflow_demo/airflow_demo.sh seeded the runs instead of
+this script. --no-validate plays a scenario while ignoring its `expect:`.
+
+Exit codes: 0 = played (and, if it had expectations, they held); 1 = the
+expectations did not hold, or uploads never stopped arriving before
+settle_timeout; 2 = the scenario or its expectations are malformed.
+
+This script only calls scenario-player/seed.py's library functions
+(seed_run/add_ls/end_run) and reads the ledger via scenario-player/conddb.py
+-- it has no Airflow (or any engine) import at all.
 """
 import argparse
 import sys
@@ -78,8 +102,13 @@ from typing import Optional
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import expectations as ngt_expectations  # noqa: E402  -- scenario-player/expectations.py
 import faults as ngt_faults  # noqa: E402  -- scenario-player/faults.py, the shared fault vocabulary
 import seed  # noqa: E402  -- scenario-player/seed.py, reused as a library (engine-agnostic)
+
+EXIT_OK = 0
+EXIT_EXPECTATIONS_FAILED = 1
+EXIT_BAD_SCENARIO = 2
 
 
 def _describe_fault(spec: ngt_faults.FaultSpec):
@@ -225,27 +254,81 @@ def play(events, speed=1.0, dry_run=False, log=print):
         e.fire()
 
 
+def check_expectations(expectations, name, log=print):
+    """Settle-wait, evaluate, print the report. Returns an exit code."""
+    settled, rows = ngt_expectations.wait_for_settle(expectations, log=log)
+    verdict = ngt_expectations.evaluate(expectations, rows)
+    verdict.settled = settled
+    if not settled:
+        verdict.ok = False
+        verdict.problems.append(
+            f"uploads were still arriving after settle_timeout={expectations.settle_timeout:.0f}s -- "
+            "the pipeline had not finished, so this result is inconclusive rather than merely wrong "
+            "(raise settle_timeout, or lower it only if the scenario really should have finished)"
+        )
+    log(ngt_expectations.format_report(verdict, expectations, name=name))
+    return EXIT_OK if verdict.ok else EXIT_EXPECTATIONS_FAILED
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scenario", type=Path, help="path to a scenario YAML file")
     parser.add_argument("--speed", type=float, default=1.0, help="playback speed multiplier (default: 1.0)")
     parser.add_argument(
-        "--dry-run", action="store_true", help="print the resolved timeline and exit; touches nothing"
+        "--dry-run", action="store_true", help="print the resolved timeline and expectations and exit; touches nothing"
+    )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="skip playback and only check the conditions DB against the scenario's expect: block "
+        "(for validating a run seeded by the live demo rather than by this script)",
+    )
+    parser.add_argument(
+        "--no-validate", action="store_true", help="play the scenario but ignore its expect: block"
     )
     args = parser.parse_args()
 
+    if args.validate_only and args.no_validate:
+        parser.error("--validate-only and --no-validate are mutually exclusive")
+
     scenario = yaml.safe_load(args.scenario.read_text(encoding="utf-8"))
-    events = build_timeline(scenario)
+
+    # A malformed scenario or expectation is a different kind of failure from
+    # a scenario whose expectations legitimately didn't hold -- exit 2, not 1,
+    # and without a traceback.
+    try:
+        events = build_timeline(scenario)
+        raw_expect = scenario.get("expect") if isinstance(scenario, dict) else None
+        expectations = (
+            None if raw_expect is None or args.no_validate else ngt_expectations.parse_expectations(raw_expect)
+        )
+    except (ValueError, ngt_faults.FaultSpecError) as exc:
+        print(f"{args.scenario}: {exc}", file=sys.stderr)
+        return EXIT_BAD_SCENARIO
+
+    if args.validate_only:
+        if expectations is None:
+            print(f"{args.scenario}: --validate-only needs an expect: block", file=sys.stderr)
+            return EXIT_BAD_SCENARIO
+        return check_expectations(expectations, name=str(args.scenario))
+
     if not events:
         print("(scenario has no runs -- nothing to play)")
-        return
+        return EXIT_OK
 
-    if not args.dry_run:
-        print(f"Playing {args.scenario} at {args.speed}x speed ({len(events)} events, $NGT_DEV_HOME={seed.NGT_DEV_HOME})")
-    play(events, speed=args.speed, dry_run=args.dry_run)
-    if not args.dry_run:
-        print("Scenario finished.")
+    if args.dry_run:
+        play(events, speed=args.speed, dry_run=True)
+        print(expectations.describe() if expectations else "expect: (none -- scenario is not self-validating)")
+        return EXIT_OK
+
+    print(f"Playing {args.scenario} at {args.speed}x speed ({len(events)} events, $NGT_DEV_HOME={seed.NGT_DEV_HOME})")
+    play(events, speed=args.speed)
+    print("Scenario finished.")
+
+    if expectations is None:
+        return EXIT_OK
+    return check_expectations(expectations, name=str(args.scenario))
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
