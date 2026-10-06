@@ -216,3 +216,93 @@ The tests in `tests/` mock every external dependency:
 
 No network access, CMSSW, or CERN-internal hosts are required to run the suite.
 
+## Running a live demo of the loops (no CERN infra needed)
+
+For watching the actual FSM processes run -- not just pytest -- `scenario-player/live_demo.sh`
+launches real `NGTLoopStep2/3/4.py` processes (one per tmux session) against a fake
+OMS/EOS/CMSSW toolchain in `scenario-player/bin/` (fake `cmsDriver.py`, `cmsRun`, `edmFileUtil`,
+`xrdfs`, `cmsrel`, `cmsenv`, `uploadConditions.py`). Everything runs for real --
+real state transitions, real generated job scripts, real output files flowing from
+Step 2 through Step 3 to a fake Step 4 upload -- entirely offline.
+
+```bash
+./scenario-player/live_demo.sh setup                                  # create ./demo-env scratch env
+./scenario-player/live_demo.sh start-all EcalPedestals                 # launch all 3 steps in tmux
+./scenario-player/live_demo.sh seed-run EcalPedestals 398600 --ls 51 52  # latch a fake live run
+tmux attach -t NGTDemo2_EcalPedestals                       # watch it react (Ctrl-b d to detach)
+./scenario-player/live_demo.sh add-ls EcalPedestals 398600 53           # simulate a new lumisection arriving
+./scenario-player/live_demo.sh end-run 398600                           # simulate the run ending
+./scenario-player/live_demo.sh status                                   # list running sessions
+./scenario-player/live_demo.sh stop-all EcalPedestals                   # tear down
+```
+
+For a guided, narrated walkthrough of all of the above -- runs `setup`, launches all
+three steps, seeds a couple of runs (a few lumisections each, seeded incrementally),
+and after every command shows you the relevant output directories/files so you can
+see each state machine actually doing something, pausing between steps -- use:
+```bash
+./scenario-player/interactive_demo.sh                                    # 2 runs, 2 LS each, EcalPedestals
+./scenario-player/interactive_demo.sh --calibration SiStripBad --runs 3 --ls-per-run 4
+./scenario-player/interactive_demo.sh --yes                               # don't pause between steps
+```
+
+Run `./scenario-player/live_demo.sh` with no arguments for the full command list. All state
+lives under `$NGT_DEV_HOME` (default `./demo-env`, a gitignored directory inside
+this repo) -- delete it any time to reset the demo environment.
+
+Two settings are overridable via environment variables:
+
+| Variable                 | Default                              | Meaning                          |
+|---------------------------|--------------------------------------|-----------------------------------|
+| `NGT_DEV_HOME`             | `./demo-env`                         | scratch state directory           |
+| `NGT_LOOP_SLEEP_SECONDS`   | `5` (production default: `60`)       | Step 3/4 poll interval, seconds   |
+
+e.g. `NGT_DEV_HOME=/tmp/ngt-demo ./scenario-player/live_demo.sh setup`. `NGT_DEV_HOME` is read
+at `setup` time and baked into `$NGT_DEV_HOME/ngtParameters.jsn`, so re-run `setup`
+after changing it. `NGT_LOOP_SLEEP_SECONDS` is read fresh each time a loop is
+started (`start2` / `start3` / `start4` / `start-all`).
+
+## The offline simulator (`scenario-player/`)
+
+`scenario-player/` holds everything needed to simulate a live run without CERN infrastructure:
+`sim_env.sh` (scratch environment + fake toolchain bootstrap), `seed.py` and `scenario_player.py`
+(driving/replaying fake runs, with `scenarios/*.yaml`), `faults.py` (the shared fault-injection
+vocabulary) and `bin/` (the fake `cmsRun`/`cmsDriver.py`/`edmFileUtil`/`xrdfs`/... toolchain).
+None of it imports or knows about a specific orchestration engine, so whatever runs the steps can
+be pointed at the same `$NGT_DEV_HOME`. It is not a Python package (hence the hyphen):
+`faults.py`, `seed.py` and `scenario_player.py` are top-level modules found via `sys.path`
+(`tests/conftest.py`, and `PYTHONPATH` from `sim_env.sh` for the fake `omsapi`'s live fault path).
+
+### Scripting a timed sequence of runs/lumisections
+
+`seed.py`'s `seed-run`/`add-ls`/`end-run` are one-shot commands, handy for typing out by hand.
+For an unattended, repeatable test -- or to exercise several calibrations processing
+concurrently, which is awkward to type out live -- `scenario-player/scenario_player.py` plays
+back a whole timeline from a declarative YAML file instead:
+
+```bash
+python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml            # real-time
+python3 scenario-player/scenario_player.py scenario-player/scenarios/concurrent_multi_calibration.yaml --speed 5
+python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --dry-run  # print the
+                                                                                   # resolved
+                                                                                   # timeline only
+```
+
+A scenario lists one or more runs, each with a start offset and a sequence of lumisections
+separated by delays (`after: N` seconds since the previous event in that run); multiple runs'
+events are merged into one global timeline by absolute time. A run is one CMS-wide DAQ run --
+there's only ever one active at a time across the whole experiment, so `build_timeline` rejects
+a scenario whose runs overlap in time -- but its lumisections can feed several calibrations at
+once, since one run's RAW data underlies every calibration stream: each run entry takes a
+`calibrations` list (always a list, even for one calibration), and the timeline plays the same
+start/LS-arrival/end sequence once per listed calibration while sharing that one run number (see
+`scenario-player/scenarios/concurrent_multi_calibration.yaml`). See
+`scenario-player/scenarios/*.yaml` for more worked examples and
+`scenario-player/scenario_player.py`'s module docstring for the full format description. Run
+numbers must be exactly six digits: the fake `edmFileUtil` parses `run<RUN6DIGIT>_ls<LS>` names
+and skips anything else.
+
+This is the same engine-agnostic layer `seed.py` is (it calls `seed.py`'s functions directly and
+imports no orchestration engine), so any orchestrator pointed at the same `$NGT_DEV_HOME` reacts
+to the same scenario files unchanged.
+
