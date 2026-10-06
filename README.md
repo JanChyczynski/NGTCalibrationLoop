@@ -185,14 +185,34 @@ Step 4 loop takes all available ALCARECO files available at a given time that we
         └── ...
 ```
 
-## Nota Bene
-There are quite a lot of issues remaining, still. The version we are at right now is the "functioning" version that was used for the demonstrator in the 2025 data taking. However, for 2026 data-taking, we plan to improve and have worked on all the issues. 
+## Running the FSM logic locally / tests
 
-## Public Presentations
+The three loops don't need CMSSW, EOS, OMS, or a real conditions DB to exercise their
+state-machine logic. `/data/ngt`, `/tmp/ngt`, and `/nfshome0/sakura` are configurable
+via `DATA_BASE_PATH`, `LOG_BASE_PATH`, and `COND_AUTH_PATH` in `ngtParameters.jsn`
+(they default to those same production paths, so deployment behavior is unchanged),
+and each script now guards its argument parsing / main loop behind
+`if __name__ == "__main__":`, so `NGTLoopStep2/3/4.py` can be imported without
+launching anything.
 
-- **Musich, M.** et al. (2025) *Task 3.4: Optimal Calibrations for the CMS High-Level Trigger*. Next Generation Triggers 2nd Technical Workshop, CERN, 21 November 2025. [DOI](https://doi.org/10.17181/gzvw9-t3379).
+To set up a local environment and run the test suite:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
 
-- **Zarucki, M.** (2026). *Demonstrating the Processing Chain for the Next Generation Triggers in the CMS Experiment*. 28th Conference on Computing in High Energy and Nuclear Physics (CHEP 2026), CMS, CERN. [DOI](https://doi.org/10.17181/txk7r-fsd29).
+The tests in `tests/` mock every external dependency:
+- OMS REST API -> `tests/stubs/omsapi` (an in-memory fake of the query-builder
+  interface `NGTLoopStep2.py` uses; the real `oms-api-client` isn't installed for
+  tests, only for production deploys per the instructions above)
+- `edmFileUtil` / `xrdfs` (EOS access) -> `tests/support/fake_subprocess.FakeEOS`
+- `cmsDriver.py` / `cmsRun` / `uploadConditions.py` -> never actually invoked;
+  `subprocess.Popen` is replaced with a recorder, so "launching a job" just records
+  what would have run
+- filesystem paths -> redirected into a pytest `tmp_path` via the
+  `NGT_PARAMETERS_PATH` / `NGT_CALIBRATION_YAML_DIR` env vars each script reads
 
-- **Prendi, J.** (2026). *Conceptual Design and Operation of the Calibration Loop for the Next Generation Triggers in the CMS Experiment*. 28th Conference on Computing in High Energy and Nuclear Physics (CHEP 2026), CERN, 28 May 2026. [DOI](https://doi.org/10.17181/rv6ad-zpy87).
+No network access, CMSSW, or CERN-internal hosts are required to run the suite.
 
