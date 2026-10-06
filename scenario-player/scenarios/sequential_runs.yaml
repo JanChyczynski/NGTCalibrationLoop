@@ -28,3 +28,26 @@ runs:
       - {ls: 3, after: 15}
       - {ls: 4, after: 15}
     end_after: 20
+
+# Six payloads: each of the three calibrations must end with one covering
+# exactly LS 1-4 for *each* of the two runs. Keying payloads on
+# (calibration, run) is what makes this scenario's real question assertable --
+# that the second run's chain ran independently and in full, rather than the
+# second run's lumisections leaking into the first run's payload (or the
+# first run's working directory being reused for the second).
+#
+# BeamSpot does get lumisections here, unlike in
+# concurrent_multi_calibration.yaml, so it is expected to upload like the
+# others. Its only special case upstream is the `since` field in the upload
+# metadata, which the ledger deliberately does not record.
+expect:
+  settle_timeout: 1200
+  quiet_for: 60
+  allow_extra: {before: true}
+  payloads:
+    - {calibration: EcalPedestals, run: 700501, lumisections: 1-4}
+    - {calibration: SiStripBad,    run: 700501, lumisections: 1-4}
+    - {calibration: BeamSpot,      run: 700501, lumisections: 1-4}
+    - {calibration: EcalPedestals, run: 700502, lumisections: 1-4}
+    - {calibration: SiStripBad,    run: 700502, lumisections: 1-4}
+    - {calibration: BeamSpot,      run: 700502, lumisections: 1-4}
