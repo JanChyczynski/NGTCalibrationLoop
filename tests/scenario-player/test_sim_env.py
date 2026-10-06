@@ -54,3 +54,16 @@ def test_env_sh_runs_the_fakes_from_the_checkout(env_sh):
     found = _sourced(env_sh, "command -v cmsRun")
     assert Path(found).resolve() == (REPO_ROOT / "scenario-player" / "bin" / "cmsRun").resolve()
     assert not (env_sh / "bin").exists()
+
+
+def test_env_sh_points_the_fakes_at_the_armed_faults(env_sh):
+    # Without it, bin/cmsRun, bin/uploadConditions.py and the fake omsapi never look for armed
+    # faults, so a scenario's faults: entries would be silently inert for live_demo.sh's loops.
+    assert _sourced(env_sh, 'echo "$NGT_FAULTS_DIR"') == str(env_sh / "faults")
+
+
+def test_env_sh_makes_the_fake_omsapis_fault_path_importable(env_sh):
+    """The fake omsapi's live fault path imports scenario-player/faults.py, which is not an
+    installed package -- env.sh's PYTHONPATH is what lets a loop's own Python find it."""
+    found = _sourced(env_sh, f'"{sys.executable}" -c "import faults, omsapi; print(faults.__file__)"')
+    assert Path(found).resolve() == (REPO_ROOT / "scenario-player" / "faults.py").resolve()
