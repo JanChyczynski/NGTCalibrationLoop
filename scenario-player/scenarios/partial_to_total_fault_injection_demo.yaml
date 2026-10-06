@@ -24,3 +24,14 @@ faults:
   - {target: cmsrun, mode: exit_code, exit_code: 139, calibration: EcalPedestals, run: 900011, step: step2, at: 15}
   - {target: upload_conditions, mode: exit_code, exit_code: 1, calibration: EcalPedestals, run: 900012, at: 95, times: 6}
   - {target: cmsrun, mode: exit_code, exit_code: 139, calibration: EcalPedestals, run: 900012, step: step2, at: 100, times: 6}
+
+# Run 900011 loses LS 2, as in fault_injection_demo.yaml; whatever run 900012 uploads is not
+# checked. Step 4 uploads each final payload again when the run ends.
+expect:
+  settle_timeout: 1800
+  quiet_for: 150
+  allow_duplicates: true
+  allow_missing_lumisections: true
+  allow_extra: {before: true, after: true, payloads: true}
+  payloads:
+    - {calibration: EcalPedestals, run: 900011, lumisections: 1-3}

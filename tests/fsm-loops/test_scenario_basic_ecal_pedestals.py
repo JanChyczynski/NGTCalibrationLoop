@@ -3,7 +3,7 @@ End-to-end "scenario-test": plays scenario-player/scenarios/basic_ecal_pedestals
 scenario-player/live_demo.sh (real NGTLoopStep2/3/4.py processes in tmux against the fake
 OMS/EOS/CMSSW toolchain) and checks what the loops left behind in a scratch $NGT_DEV_HOME.
 
-Slow (about a minute) and needs bash + tmux + the repo-root .venv, so it is deselected from the
+Slow (a couple of minutes) and needs bash + tmux + the repo-root .venv, so it is deselected from the
 default `pytest` run (see pytest.ini) -- run it with `pytest -m scenario` (CI: scenario-test).
 """
 import os
@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+import fake_conddb  # scenario-player/fake_conddb.py, on sys.path via tests/conftest.py
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LIVE_DEMO = REPO_ROOT / "scenario-player" / "live_demo.sh"
@@ -75,6 +77,7 @@ def test_basic_ecal_pedestals_scenario(demo_home):
     ls_numbers = [ls["ls"] for ls in spec["lumisections"]]
     run_dir = home / "data" / CALIBRATION / f"run{run}"
 
+    # The player checks the scenario's expect: block once the uploads settle, and exits 1 if it fails.
     played = demo("play", str(SCENARIO), "--speed", str(SPEED))
     assert played.returncode == 0, played.stdout + played.stderr
 
@@ -105,6 +108,13 @@ def test_basic_ecal_pedestals_scenario(demo_home):
 
     # Step 4 harvested at least once...
     assert list(run_dir.glob("harvestJob*/*.db")), "no harvestJob directory contains a .db file"
+
+    # ...and every upload is this run's, the last covering every lumisection (how many come before it
+    # depends on timing).
+    rows = fake_conddb.read_ledger(str(home / "conddb" / fake_conddb.LEDGER_NAME))
+    assert rows, "nothing reached the dummy conditions DB"
+    assert {(row["calibration"], row["run"]) for row in rows} == {(CALIBRATION, run)}
+    assert rows[-1]["lumisections"] == ls_numbers
 
     # ...and nothing along the way wrote an error.
     error_logs = [*(home / "data").rglob("*stderr.log"), *(home / "logs").rglob("*ERROR.log")]
