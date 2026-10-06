@@ -1,0 +1,17 @@
+# One run with one single-shot fault per target, each armed just before the work it is aimed at:
+# OMS fails twice, the first upload fails, Step 2's cmsRun crashes on LS 2, and OMS answers a 503.
+runs:
+  - calibrations: [EcalPedestals]
+    run: 900001
+    start_offset: 0
+    lumisections:
+      - {ls: 1, after: 0}
+      - {ls: 2, after: 20}
+      - {ls: 3, after: 20}
+    end_after: 30
+
+faults:
+  - {target: oms, mode: connection_error, run: 900001, at: 5, times: 2}
+  - {target: upload_conditions, mode: exit_code, exit_code: 1, calibration: EcalPedestals, run: 900001, at: 10}
+  - {target: cmsrun, mode: exit_code, exit_code: 139, calibration: EcalPedestals, run: 900001, step: step2, at: 15}
+  - {target: oms, mode: http_error, status: 503, at: 30}
