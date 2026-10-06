@@ -25,7 +25,9 @@
 #   ./scenario-player/sim_env.sh setup|reset -- run directly instead. `reset` wipes
 #                                      $NGT_DEV_HOME (all simulator state --
 #                                      fake OMS runs, EOS files, output data,
-#                                      logs) independently of whatever's using
+#                                      logs, and the conddb/ upload ledger a
+#                                      scenario's expectations are checked
+#                                      against) independently of whatever's using
 #                                      it, no venv needed. `setup` recreates
 #                                      it, and DOES need a venv active first
 #                                      (any one -- .venv, ~/airflow3-ngt-venv,
@@ -75,7 +77,7 @@ sim_setup() {
     return 1
   fi
 
-  mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin,faults}
+  mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin,faults,conddb}
   mkdir -p "$NGT_DEV_HOME/cmssw_home/CMSSW_16_0_7_patch1/src"
 
   cp "$REPO_DIR"/scenario-player/bin/* "$NGT_DEV_HOME/bin/"

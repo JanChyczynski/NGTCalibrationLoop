@@ -2,9 +2,23 @@
 """
 (FAKE) stand-in for CMS conditions upload's `uploadConditions.py`.
 
-Never touches the network or a real conditions DB -- just reports what it
-would have uploaded, so NGTLoopStep4.py's harvesting script can complete its
-cycle.
+Never touches the network or a real conditions DB. Instead it appends one row
+to a dummy one -- $NGT_DEV_HOME/conddb/payloads.jsonl, see
+scenario-player/bin/_fakeprov.py -- recording which calibration/run/
+lumisections the payload it was handed actually covers, read out of that
+.db file's own provenance manifest. That ledger is what a scenario's
+`expect:` block is validated against (scenario-player/expectations.py).
+
+Only the .db argument is read. The upload-metadata .txt step4 writes beside it
+(tag/inputTag/since/destinationDatabase) is deliberately *not* consulted:
+those are production code's own outputs rather than evidence about what the
+pipeline processed, so keeping them out leaves this with a single input, no
+.db/.txt naming convention to depend on, and nothing to do when a
+calibration's config names the two differently.
+
+A row is appended only on the success path: an injected fault exits before
+writing anything, which is exactly what makes "nothing should reach the
+conditions DB" an assertable expectation for the fault scenarios.
 
 Before doing that, checks $NGT_FAULTS_DIR/upload_conditions.json (armed by
 scenario-player/seed.py's arm_fault(), called by scenario-player/scenario_player.py for a scenario's
@@ -21,6 +35,16 @@ import os
 import re
 import sys
 import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import _fakeprov  # noqa: E402  -- sibling module, see its docstring for why not an import from ../
+
+
+def _as_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _scope_from_cwd():
@@ -125,9 +149,45 @@ def main():
         print(_upload_error_message(exit_code, fault.get("message")), file=sys.stderr)
         sys.exit(exit_code)
 
-    db_file = sys.argv[1] if len(sys.argv) > 1 else "<missing db file argument>"
+    if len(sys.argv) < 2:
+        print("(FAKE) uploadConditions.py: ERROR - expected a .db file argument", file=sys.stderr)
+        sys.exit(1)
+
+    db_file = sys.argv[1]
     cond_auth_path = os.environ.get("COND_AUTH_PATH", "<unset>")
+
+    manifest = _fakeprov.read_provenance(db_file)
+    if manifest is None:
+        # A real .db, or a fake one produced before provenance existed. Record
+        # the upload anyway (an unrecorded upload would read as "the pipeline
+        # never uploaded", a far more confusing failure) but with no
+        # lumisections, so an expectation check fails loudly on the contents
+        # rather than silently passing on an empty set.
+        print(
+            f"(FAKE) uploadConditions.py: WARNING - no provenance manifest in {db_file}; "
+            "recording an upload with no lumisections",
+            file=sys.stderr,
+        )
+        manifest = {}
+
+    scope = _scope_from_cwd()
+    row = _fakeprov.append_payload(
+        {
+            "calibration": manifest.get("calibration") or scope["calibration"],
+            "run": int(manifest["run"]) if manifest.get("run") is not None else _as_int(scope["run"]),
+            "lumisections": sorted(manifest.get("lumisections") or []),
+            "n_input_files": len(manifest.get("inputs") or []),
+            "db_file": os.path.basename(db_file),
+            "job_dir": os.getcwd(),
+        }
+    )
+
+    ls_summary = ",".join(str(ls) for ls in row["lumisections"]) or "none"
     print(f"(FAKE) uploadConditions.py: would upload {db_file} using COND_AUTH_PATH={cond_auth_path}")
+    print(
+        f"(FAKE) uploadConditions.py: recorded payload seq={row['seq']} "
+        f"{row['calibration']}/run{row['run']} covering LS {ls_summary} -> {_fakeprov.ledger_path()}"
+    )
 
 
 if __name__ == "__main__":
