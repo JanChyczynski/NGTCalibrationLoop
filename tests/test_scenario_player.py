@@ -313,6 +313,9 @@ def test_timed_playback_sleeps_and_never_prompts(monkeypatch):
         (["--interactive", "--speed", "5"], "--speed has no meaning"),
         (["--speed", "0"], "must be positive"),
         (["--monitor", "--dry-run"], "--monitor has no meaning"),
+        (["--validate-only", "--no-validate"], "mutually exclusive"),
+        (["--validate-only", "--interactive"], "--validate-only plays nothing"),
+        (["--validate-only", "--speed", "2"], "--validate-only plays nothing"),
     ],
 )
 def test_main_rejects_contradictory_flag_combinations(monkeypatch, capsys, flags, expected_error):
@@ -373,6 +376,7 @@ def test_only_list_calibrations_prints_nothing_for_a_scenario_with_no_runs(monke
         ["--interactive", "--speed", "5"],
         ["--monitor", "--dry-run"],
         ["--speed", "0"],
+        ["--validate-only", "--no-validate"],
     ],
 )
 def test_only_list_calibrations_ignores_every_other_flag(monkeypatch, capsys, tmp_path, ignored_flags):
@@ -391,6 +395,29 @@ def test_only_list_calibrations_ignores_every_other_flag(monkeypatch, capsys, tm
 
     assert scenario_player.main() is None
     assert capsys.readouterr().out.splitlines() == ["SiStripBad"]
+    assert calls == []
+
+
+@pytest.mark.parametrize("extra_flags", [[], ["--only-list-calibrations"]])
+def test_main_reports_a_malformed_scenario_with_exit_2(monkeypatch, capsys, tmp_path, extra_flags):
+    # Overlapping runs: build_timeline's own ValueError, reported as one line on stderr --
+    # no traceback -- and with --only-list-calibrations too, before live_demo.sh starts anything.
+    calls = _record_seed_calls(monkeypatch)
+    scenario = _write_scenario(
+        tmp_path,
+        {
+            "runs": [
+                {"calibrations": ["SiStripBad"], "run": 1, "start_offset": 0, "end_after": 100},
+                {"calibrations": ["SiStripBad"], "run": 2, "start_offset": 50, "end_after": 100},
+            ]
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["scenario_player.py", str(scenario), *extra_flags])
+
+    assert scenario_player.main() == scenario_player.EXIT_BAD_SCENARIO
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert str(scenario) in captured.err and "Traceback" not in captured.err
     assert calls == []
 
 
