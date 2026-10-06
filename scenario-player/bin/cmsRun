@@ -34,8 +34,9 @@ import faults  # noqa: E402
 def _scope_from_cwd():
     """{calibration, run, step} derived from cwd: step2 runs directly in
     <data_base_path>/<calibration>/run<N>/; step3/step4 nest a job dir one level
-    deeper, alcaPromptJob*/harvestJob* (NGTLoopStep3/4.py number them:
-    alcaPromptJob000, harvestJob000, ...)."""
+    deeper, alcaPromptJob*/harvestJob* (NGTLoopStep3/4.py number them,
+    alcaPromptJob000; ngt_calibration_loop's step3/step4 hash their inputs,
+    alcaPromptJob_<hash>)."""
     parts = os.getcwd().replace("\\", "/").rstrip("/").split("/")
     scope = {"calibration": None, "run": None, "step": None}
     for i, part in enumerate(parts):

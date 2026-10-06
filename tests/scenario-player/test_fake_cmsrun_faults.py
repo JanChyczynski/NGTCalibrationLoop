@@ -1,8 +1,8 @@
 """
 Tests that the fake cmsRun (scenario-player/bin/cmsRun) reads a fault's calibration/run/step scope
-off the directory it runs in: the run directory for Step 2, and the alcaPromptJob000/harvestJob000
-job dirs NGTLoopStep3/4.py create for Steps 3 and 4. It runs the real script as a subprocess,
-since the scope comes from its cwd.
+off the directory it runs in: the run directory for Step 2, and for Steps 3 and 4 the job dirs that
+NGTLoopStep3/4.py number (alcaPromptJob000) and ngt_calibration_loop hashes (alcaPromptJob_<hash>).
+It runs the real script as a subprocess, since the scope comes from its cwd.
 """
 
 import json
@@ -46,7 +46,9 @@ def _armed(faults_dir):
     [
         (None, "step2"),  # cmsRun runs in the run directory itself
         ("alcaPromptJob000", "step3"),
+        ("alcaPromptJob_abc1234567", "step3"),  # ngt_calibration_loop's content-hashed job dirs
         ("harvestJob001", "step4"),
+        ("harvestJob_def7654321", "step4"),
     ],
 )
 def test_a_step_scoped_fault_fires_in_that_steps_job_dir(tmp_path, job_dir_name, step):
@@ -62,7 +64,7 @@ def test_a_step_scoped_fault_fires_in_that_steps_job_dir(tmp_path, job_dir_name,
     assert _armed(faults_dir) == []  # consumed
 
 
-@pytest.mark.parametrize("job_dir_name", ["alcaPromptJob000", "harvestJob000"])
+@pytest.mark.parametrize("job_dir_name", ["alcaPromptJob000", "harvestJob000", "alcaPromptJob_abc1234567"])
 def test_a_step_scoped_fault_leaves_other_steps_jobs_alone(tmp_path, job_dir_name):
     faults_dir = tmp_path / "faults"
     _arm(faults_dir, calibration=CALIBRATION, step="step4" if job_dir_name.startswith("alca") else "step3")

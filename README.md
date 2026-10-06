@@ -343,9 +343,9 @@ This calls `seed.py`'s functions directly, nothing more -- the same engine-agnos
 
 OMS (`connection_error`, `timeout`, `http_error` with a status, `malformed_json`), `cmsRun` and
 `uploadConditions.py` (`exit_code`) can be made to fail on purpose, with realistic error text. The
-vocabulary is `scenario-player/faults.py`. pytest arms the fake OMS in-process with
-`tests/stubs/omsapi`'s `set_failure()`; a live run arms faults by writing
-`$NGT_DEV_HOME/faults/<target>.json`, which the fakes consume -- from a scenario's top-level
+vocabulary is `scenario-player/faults.py`. pytest arms a fault in-process with the `inject_fault`
+fixture (an OMS one through `tests/stubs/omsapi`'s `set_failure()`); a live run arms faults by
+writing `$NGT_DEV_HOME/faults/<target>.json`, which the fakes consume -- from a scenario's top-level
 `faults:` list (see `scenario-player/scenarios/fault_injection_demo.yaml`, or
 `oms_outage_demo.yaml`, which takes OMS down just as a run starts) or by hand:
 
@@ -364,7 +364,8 @@ payload. A failed upload is made good only by a later harvest of the same run --
 everything the run has produced so far, the last when the run ends.
 
 Tests: `tests/scenario-player/test_faults.py`, `test_omsapi_faults.py`, `test_fake_cmsrun_faults.py`
-and `test_sim_env.py`.
+and `test_sim_env.py`; `tests/ngt-calib-lib/test_oms_faults.py` and `test_job_faults.py` aim the
+vocabulary at the step libraries.
 
 ### Validating the result: did the scenario actually pass?
 

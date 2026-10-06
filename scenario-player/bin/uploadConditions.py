@@ -13,8 +13,8 @@ scenario-player/seed.py's arm_fault(), called by scenario-player/scenario_player
 still-armed, scope-matching simulated failure, and if one exists, prints a
 realistic condDB-upload-style error to stderr and exits with the configured
 code instead. Scope (calibration/run) is derived from the current working
-directory -- see _scope_from_cwd -- since NGTLoopStep4.py's HARVESTING.sh
-always runs it in its own harvestJob<NNN> directory.
+directory -- see _scope_from_cwd -- since NGTLoopStep4.py's HARVESTING.sh and
+ngt_calibration_loop/step4.py's upload_conditions() always run it in their own harvestJob* directory.
 """
 import os
 import re

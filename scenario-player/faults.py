@@ -4,7 +4,8 @@ A fault names the system (`target`), how it fails (`mode`), an optional scope
 (`calibration`/`run`/`step`) and how many matching calls it survives (`times`).
 Whatever consumes it prints error text that reads like the real failure.
 
-pytest arms the fake OMS in-process with tests/stubs/omsapi's set_failure(); a
+pytest arms a fault in-process with tests/conftest.py's inject_fault (an OMS one
+through tests/stubs/omsapi's set_failure()); a
 live scenario arms faults by writing $NGT_DEV_HOME/faults/<target>.json
 (seed.py's arm_fault), which the fakes consume in the processes running the
 loops. Standard library only, so the fakes in bin/ can import it.
