@@ -193,11 +193,15 @@ CERN/CMS project reports, not this repo's mocked dev environment).
 - `scenario-player/` -- the engine-agnostic offline simulator, see "Running a live demo" below:
   `sim_env.sh` (scratch environment + fake toolchain bootstrap), `seed.py` and
   `scenario_player.py` (driving/replaying fake runs, with `scenarios/*.yaml`), `faults.py` (the
-  shared fault-injection vocabulary) and `bin/` (the fake `cmsRun`/`cmsDriver.py`/... toolchain).
+  shared fault-injection vocabulary), `expectations.py` and `conddb.py` (the `expect:` vocabulary
+  and the dummy conditions DB a scenario's result is validated against, see "Validating the
+  result" below) and `bin/` (the fake `cmsRun`/`cmsDriver.py`/... toolchain, plus `_fakeprov.py`
+  defining the provenance/ledger formats those write).
   Nothing in it imports or knows about Airflow specifically, so the same scratch environment and
   scenario files can drive a future non-Airflow adapter unchanged -- see `sim_env.sh`'s header
   comment for why that split exists. It's not a Python package (hence the hyphen): `faults.py`,
-  `seed.py` and `scenario_player.py` are top-level modules found via `sys.path`
+  `seed.py`, `conddb.py`, `expectations.py` and `scenario_player.py` are top-level modules found
+  via `sys.path`
   (`tests/conftest.py`, and `PYTHONPATH` from `sim_env.sh` for the fake `omsapi`'s live fault path).
 
 ### Directory structure produced by a run
@@ -348,11 +352,101 @@ under `$NGT_DEV_HOME` (default `./demo-env`, a gitignored directory inside this 
 delete it any time to reset the demo environment (the Airflow instance itself -- metadata DB,
 `AIRFLOW_HOME` -- is separate/persistent, see "Setting up and running Airflow" above).
 
+### Validating the result: did the scenario actually pass?
+
+Playing a scenario shows you the pipeline *moving*; it doesn't tell you whether the pipeline did
+the right thing. A scenario can therefore declare what should have happened, in a top-level
+`expect:` block, and the player exits nonzero when it didn't:
+
+```bash
+python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml
+echo "exit=$?"    # 0 = expectations held, 1 = they didn't, 2 = the scenario is malformed
+```
+
+This works because the fake toolchain now carries identifiers along the real data path instead of
+writing opaque placeholders. Each fake `cmsRun` output is a small *provenance manifest* naming the
+calibration/run/lumisections that actually went into it, derived by unioning what its own inputs
+carried -- rooted in the `run<RUN>_ls<LS>` raw-filename convention `scenario-player/seed.py`
+creates and `scenario-player/bin/edmFileUtil` already parses. The fake
+`uploadConditions.py` reads that out of the `.db` it is handed and appends one row to a dummy
+conditions DB, `$NGT_DEV_HOME/conddb/payloads.jsonl` (JSON Lines, one object per upload, appended
+under `flock` so concurrent calibrations and separate Airflow worker processes can all write it):
+
+```json
+{"seq": 1, "uploaded_at": "2026-10-06T12:34:56Z", "calibration": "EcalPedestals", "run": 398600,
+ "lumisections": [51, 52, 53], "n_input_files": 3, "db_file": "NGTCalibEcalPedestals.db",
+ "job_dir": ".../EcalPedestals/run398600/harvestJob_ab12cd34ef"}
+```
+
+Deriving it this way is what gives the check teeth: feed a harvest the wrong files and the
+payload's lumisections are wrong too, rather than looking correct because the fake wrote down what
+it was supposed to produce. The ledger records only what the pipeline *processed* -- the upload
+metadata `.txt` Step 4 writes beside the `.db` (tag/`since`/destination) is deliberately not read.
+
+An `expect:` block lists the expected *sequence* of uploads; every row in the ledger must be either
+matched by an entry or permitted by an `allow_extra` category:
+
+```yaml
+expect:
+  settle_timeout: 600          # cap on waiting for uploads to arrive
+  quiet_for: 45                # settled once no new upload lands for this long
+  allow_extra: {before: true}  # scalar true/false sets all four categories at once
+  payloads:
+    - {calibration: EcalPedestals, run: 398600, lumisections: 51-53}
+```
+
+| Flag | The question it answers | Default |
+| --- | --- | --- |
+| `allow_missing_lumisections` / `allow_extra_lumisections` | does a matched upload carry **the right lumisections**? | both `false` -> exact |
+| `allow_extra.{payloads,before,between,after}` | may the ledger hold **uploads nobody listed**, and where? | `false` |
+| `allow_duplicates` | may two uploads carry an **identical** lumisection set? | `false` |
+| `ordered` | must the listed entries land in the listed **order**? | `false` |
+
+A few things worth knowing before writing one:
+
+- **`lumisections:`** accepts `51-53`, `[51, 52, 53]`, `"51-53,57"` or a bare `51`.
+- **Every flag is overridable inside a `payloads` entry**, for the per-scenario flexibility
+  (`ordered` and `allow_extra.payloads` excepted -- they describe the list as a whole).
+- **`payloads: []`** with `allow_extra: false` asserts that nothing at all reached the conditions
+  DB, which is how a total-failure scenario is expressed. An injected upload fault writes no row.
+- **`before` and `after` are separate knobs on purpose.** Step 4 deliberately re-harvests
+  everything available on each cycle rather than just the new delta, so a healthy run climbs
+  through growing payloads and an extra upload *before* the expected one is usually benign. One
+  *after* it usually is not -- a payload landing once the run has ended, or a DAG re-firing on a
+  coalesced asset event. The shipped scenarios use exactly that idiom: list the final payload,
+  `allow_extra: {before: true}`, and let the default `after: false` catch the latter.
+- **A duplicate means an _identical_ lumisection set twice**, not merely a second upload. The climb
+  `{51}` -> `{51,52}` -> `{51,52,53}` contains no duplicates; the same set twice is an upload with
+  no new statistics behind it, which Step 4 should never produce since it only starts a cycle when
+  something new is available.
+- **Checking waits for quiet, not for success.** Returning as soon as the expected payloads appear
+  would make `after: false` unenforceable, so a passing scenario always spends its last
+  `quiet_for` seconds waiting. If uploads are still arriving at `settle_timeout` the result is
+  reported as inconclusive rather than merely wrong.
+- **How many uploads a run produces is timing-dependent**, falling out of when Step 3's outputs
+  land relative to Step 4's polling. That is why the shipped scenarios assert the final payload
+  rather than enumerating the climb, and why the fault scenarios leave genuinely nondeterministic
+  outcomes unasserted (see the comments in `scenario-player/scenarios/total_fault_injection_demo.yaml`).
+
+The same `expect:` block can be checked against a run the player didn't drive -- e.g. one seeded by
+hand with `seed-run`/`add-ls` during the interactive walkthrough:
+
+```bash
+python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --validate-only
+python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --no-validate
+```
+
+`--validate-only` skips playback entirely and just reports on the conditions DB as it stands;
+`--no-validate` plays a scenario while ignoring its expectations. `--dry-run` prints the resolved
+expectations alongside the timeline, which syntax-checks a scenario file without touching anything.
+
 ### Resetting state
 
 Two independent layers of state can go stale, and clearing one doesn't clear the other:
 
-- **The simulator's own state** (`$NGT_DEV_HOME`: fake OMS runs, EOS files, output data, logs)
+- **The simulator's own state** (`$NGT_DEV_HOME`: fake OMS runs, EOS files, output data, logs,
+  and the `conddb/` upload ledger a scenario's expectations are checked against -- stale rows
+  there would otherwise be read as a previous play's payloads)
   -- via `scenario-player/sim_env.sh`, run directly, no Airflow-specific setup needed:
   ```bash
   ./scenario-player/sim_env.sh reset   # wipes $NGT_DEV_HOME entirely
