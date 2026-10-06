@@ -111,3 +111,24 @@ faults:
     run: 900012
     at: 115
     times: 6
+
+# Run 900011 is the "partial" half: its faults are single-shot and fully
+# absorbed by the retry policies, so it must finish with one payload covering
+# exactly LS 1-3 -- identical to fault_injection_demo.yaml, and the half of
+# this scenario that is deterministic enough to assert.
+#
+# Run 900012 is the "total" half and is deliberately NOT asserted (hence
+# allow_extra.payloads). Its faults are armed times: 6, a budget *shared*
+# across whichever of the run's three files reach them first, and the file
+# comment above already notes that which file(s) end up permanently failed
+# versus merely retried varies between plays. On top of that, Step 4 brings a
+# fresh retry budget each cycle, so a late upload can still succeed once the
+# 6 calls are spent. Any specific payload for 900012 would therefore be a
+# flaky expectation; keying on (calibration, run) is what lets this scenario
+# assert the deterministic half while leaving the other genuinely open.
+expect:
+  settle_timeout: 1800
+  quiet_for: 150
+  allow_extra: {before: true, payloads: true}
+  payloads:
+    - {calibration: EcalPedestals, run: 900011, lumisections: 1-3}

@@ -54,3 +54,26 @@ faults:
     run: 400001
     at: 25
     times: 6
+
+# What this scenario can assert, and what it deliberately cannot.
+#
+# Both faults are scoped to EcalPedestals, and scope matching is by working
+# directory (scenario-player/bin/cmsRun's _scope_from_cwd), so SiStripBad is
+# untouched and must still finish with a payload covering exactly LS 1-3.
+# That is the real assertion here: one calibration failing hard must not take
+# a concurrent, unrelated one down with it.
+#
+# EcalPedestals' own outcome is NOT asserted, hence allow_extra.payloads --
+# it is genuinely nondeterministic rather than merely unknown. `times: 6`
+# bounds how many calls each fault survives, not how long it stays armed, and
+# Step 4 re-harvests on every cycle, so each cycle brings a *fresh* retry
+# budget: once those 6 upload calls are used up, a later cycle's upload
+# succeeds. Whether that happens before playback ends, and how much of LS 1-3
+# the payload then covers, depends on Airflow's scheduling. Asserting any one
+# of those outcomes would make this scenario flake rather than check anything.
+expect:
+  settle_timeout: 1200
+  quiet_for: 120
+  allow_extra: {before: true, payloads: true}
+  payloads:
+    - {calibration: SiStripBad, run: 400001, lumisections: 1-3}
