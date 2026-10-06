@@ -19,6 +19,14 @@
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
 
+# faults.py (the shared fault-injection vocabulary) sits next to seed.py/
+# scenario_player.py rather than inside an installed package, so put this
+# directory on PYTHONPATH for the one consumer that runs elsewhere: the fake
+# omsapi's live-demo fault path (tests/stubs/omsapi), which executes inside
+# the engine's own worker processes. seed.py/scenario_player.py find it
+# as a sibling, and pytest via tests/conftest.py's sys.path setup.
+export PYTHONPATH="$REPO_DIR/scenario-player:${PYTHONPATH:-}"
+
 # sim_setup: create/refresh everything under $NGT_DEV_HOME that any engine
 # adapter needs -- the fake scenario-player/bin/ toolchain, env.sh, ngtParameters.jsn,
 # and (via scenario-player/seed.py, itself fully engine-agnostic) the per-calibration
@@ -38,7 +46,7 @@ sim_setup() {
     return 1
   fi
 
-  mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin}
+  mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin,faults}
   mkdir -p "$NGT_DEV_HOME/cmssw_home/CMSSW_16_0_7_patch1/src"
 
   # -r-less glob copy: skip subdirs (e.g. a stray __pycache__) instead of
@@ -90,6 +98,20 @@ ENV
 # is watching it. Does NOT recreate it afterward (call sim_setup for that) and
 # does NOT touch any engine's own state -- an engine that keeps run-history
 # outside $NGT_DEV_HOME needs its own separate reset too.
+#
+# Caution (deliberately not checked/enforced here -- this function stays
+# engine-agnostic on purpose, see the module docstring): deleting
+# $NGT_DEV_HOME out from under an engine whose processes are *currently
+# running* and hold in-flight work referencing it (e.g. a long-lived poll or
+# a deferred/suspended wait) can leave that work stuck rather than erroring
+# cleanly -- confirmed live with Airflow's triggerer (the AssetWatcher
+# triggers in airflow_automation/airflow_dags/triggers.py): an already-running
+# trigger kept polling stale state and
+# never resolved until the triggerer process itself was restarted, and each
+# process's own console log silently stopped updating (still writing to the
+# now-unlinked old file). If an engine is running, stop it first, or use its
+# adapter's own coordinated reset if it has one (e.g. airflow_automation/airflow_demo/airflow_demo.sh
+# reset-scenario) rather than calling this directly.
 sim_reset() {
   echo "Removing $NGT_DEV_HOME"
   rm -rf "$NGT_DEV_HOME"
