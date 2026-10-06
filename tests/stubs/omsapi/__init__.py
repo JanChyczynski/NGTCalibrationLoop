@@ -65,7 +65,7 @@ def set_failure(mode=True, *, status=None, times=1, run=None, message=None):
     existing caller uses exactly this form and keeps working unchanged.
 
     set_failure(mode=<one of "connection_error"|"timeout"|"http_error"|"malformed_json">, ...)
-    is the richer form tests/test_omsapi_faults.py exercises:
+    is the richer form used by tests/test_oms_faults.py and the `inject_fault` fixture:
       - mode picks which *real* requests exception .data()/.raise_for_status()/.json()
         raises, so oms.py's actual except clauses (which key off real exception types,
         not a generic RuntimeError) are genuinely exercised.

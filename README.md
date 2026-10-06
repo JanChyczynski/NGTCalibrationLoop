@@ -333,7 +333,7 @@ The three riskiest external dependencies can be made to fail on purpose, with re
 text so a failure is debuggable: OMS (`connection_error`, `timeout`, `http_error` with a status,
 `malformed_json`), `cmsRun` and `uploadConditions.py` (`exit_code`). The vocabulary (`FaultSpec`,
 in `scenario-player/faults.py`) is shared by two backends: pytest applies it in-process through
-`tests/stubs/omsapi`'s `set_failure()`; the live workflow -- a
+the `inject_fault` fixture and `tests/stubs/omsapi`'s `set_failure()`; the live workflow -- a
 separate OS process from whatever is running the loops -- arms it by writing JSON under
 `$NGT_DEV_HOME/faults/<target>.json`, which the fake `omsapi`, `bin/cmsRun` and
 `bin/uploadConditions.py` poll and consume. From a scenario file, a top-level `faults:` list arms
@@ -355,7 +355,9 @@ output, and the lumisections it covered never make it into a payload.
 
 `pytest tests/test_faults.py tests/test_omsapi_faults.py` covers the vocabulary and the fake
 `omsapi`'s side of it; `tests/test_fake_cmsrun_faults.py` and `tests/test_sim_env.py` cover how
-the fake `cmsRun` reads a fault's scope off the job directory and what `env.sh` exports.
+the fake `cmsRun` reads a fault's scope off the job directory and what `env.sh` exports;
+`tests/test_oms_faults.py` and `tests/test_job_faults.py` aim the same vocabulary at the step libraries
+(the `inject_fault` fixture in `tests/conftest.py`).
 
 ## Public Presentations
 
