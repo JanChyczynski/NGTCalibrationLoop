@@ -185,8 +185,36 @@ Step 4 loop takes all available ALCARECO files available at a given time that we
         └── ...
 ```
 
-## Nota Bene
-There are quite a lot of issues remaining, still. The version we are at right now is the "functioning" version that was used for the demonstrator in the 2025 data taking. However, for 2026 data-taking, we plan to improve and have worked on all the issues. 
+## Running the FSM logic locally / tests
+
+The three loops don't need CMSSW, EOS, OMS, or a real conditions DB to exercise their
+state-machine logic. `/data/ngt`, `/tmp/ngt`, and `/nfshome0/sakura` are configurable
+via `DATA_BASE_PATH`, `LOG_BASE_PATH`, and `COND_AUTH_PATH` in `ngtParameters.jsn`
+(they default to those same production paths, so deployment behavior is unchanged),
+and each script now guards its argument parsing / main loop behind
+`if __name__ == "__main__":`, so `NGTLoopStep2/3/4.py` can be imported without
+launching anything.
+
+To set up a local environment and run the test suite:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
+
+The tests in `tests/` mock every external dependency:
+- OMS REST API -> `tests/stubs/omsapi` (an in-memory fake of the query-builder
+  interface `NGTLoopStep2.py` uses; the real `oms-api-client` isn't installed for
+  tests, only for production deploys per the instructions above)
+- `edmFileUtil` / `xrdfs` (EOS access) -> `tests/support/fake_subprocess.FakeEOS`
+- `cmsDriver.py` / `cmsRun` / `uploadConditions.py` -> never actually invoked;
+  `subprocess.Popen` is replaced with a recorder, so "launching a job" just records
+  what would have run
+- filesystem paths -> redirected into a pytest `tmp_path` via the
+  `NGT_PARAMETERS_PATH` / `NGT_CALIBRATION_YAML_DIR` env vars each script reads
+
+No network access, CMSSW, or CERN-internal hosts are required to run the suite.
 
 ## Public Presentations
 
