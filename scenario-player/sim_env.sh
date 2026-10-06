@@ -46,7 +46,7 @@ sim_setup() {
     return 1
   fi
 
-  mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin,faults}
+  mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin,faults,conddb}
   mkdir -p "$NGT_DEV_HOME/cmssw_home/CMSSW_16_0_7_patch1/src"
 
   # -r-less glob copy: skip subdirs (e.g. a stray __pycache__) instead of
@@ -94,7 +94,8 @@ ENV
 }
 
 # sim_reset: wipe all simulator state -- every fake run/lumisection/EOS file/
-# output $NGT_DEV_HOME holds, regardless of which engine (if any) produced or
+# output $NGT_DEV_HOME holds, and the conddb/ upload ledger a scenario's
+# expectations are checked against, regardless of which engine (if any) produced or
 # is watching it. Does NOT recreate it afterward (call sim_setup for that) and
 # does NOT touch any engine's own state -- an engine that keeps run-history
 # outside $NGT_DEV_HOME needs its own separate reset too.
