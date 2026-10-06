@@ -11,17 +11,24 @@ authentication, and no real REST semantics beyond simple equality-filter/sort/pa
 
 Two ways to feed it data:
 - configure_runs() / reset() -- used by the pytest suite, in-memory only.
-- the NGT_OMS_STUB_RUNS_FILE env var -- used by scenario-player/live_demo.sh, points at a JSON file
+- the NGT_OMS_STUB_RUNS_FILE env var -- used by the live demos (exported by the $NGT_DEV_HOME/env.sh
+  scenario-player/sim_env.sh writes), points at a JSON file
   containing a list of run dicts that is re-read on every query, so a live NGTLoopStep2.py
   process picks up edits to the file (e.g. "end" a run) without needing a restart.
+
+Faults follow the same split: set_failure() in-process, $NGT_FAULTS_DIR/oms.json (written by
+scenario-player/seed.py's arm_fault()) for the live demo.
 """
 
 import json
 import os
+from http import HTTPStatus
+
+import requests
 
 _RUNS = []
 _FAIL = False
-
+_FAULTS = []  # set_failure()'s armed fault, as a fault-file entry (scenario-player/faults.py)
 
 def configure_runs(runs):
     """Replace the in-memory set of OMS "runs" records returned by queries.
@@ -36,10 +43,27 @@ def configure_runs(runs):
     _RUNS = list(runs)
 
 
-def set_failure(should_fail):
-    """Make the next query()...data() calls raise, to simulate OMS being unreachable."""
+def set_failure(mode=True, *, status=None, times=1, run=None):
+    """Simulate OMS trouble on the next query()...data() call(s).
+
+    set_failure(True)/(False): every query raises RuntimeError / none does.
+    set_failure("connection_error"|"timeout"|"http_error"|"malformed_json", ...): the
+    `requests` exception a real outage raises, validated like a scenario's `faults:` entry
+    (status for http_error; times=None for no limit; run= only hits queries filtering on
+    that run_number, so never a search for a new run).
+    """
     global _FAIL
-    _FAIL = should_fail
+    if mode is True or mode is False:
+        _FAIL = mode
+        _FAULTS.clear()
+        return
+    import faults as ngt_faults  # see _consume_fault
+
+    spec = ngt_faults.parse_fault_spec(
+        {"target": "oms", "mode": mode, "status": status, "times": times, "run": run}
+    )
+    _FAIL = False
+    _FAULTS[:] = [ngt_faults.fault_spec_to_entry(spec)]
 
 
 def reset():
@@ -50,7 +74,7 @@ def reset():
 
 def _current_runs():
     """The runs to query against: live-reloaded from NGT_OMS_STUB_RUNS_FILE if set
-    (scenario-player/live_demo.sh usage), otherwise the in-memory list from configure_runs()
+    (live-demo usage), otherwise the in-memory list from configure_runs()
     (pytest usage)."""
     runs_file = os.environ.get("NGT_OMS_STUB_RUNS_FILE")
     if not runs_file:
@@ -62,18 +86,73 @@ def _current_runs():
         return []
 
 
+def _run_number_filter(query_filters):
+    for key, value in query_filters:
+        if key == "run_number":
+            return value
+    return None
+
+
+def _consume_fault(run_number):
+    """The armed fault this query hits, with one use counted off it: set_failure()'s,
+    else one from $NGT_FAULTS_DIR/oms.json, re-read on every query like the runs file."""
+    faults_dir = os.environ.get("NGT_FAULTS_DIR")
+    faults_file = os.path.join(faults_dir, "oms.json") if faults_dir else None
+    if not _FAULTS and not faults_file:
+        return None
+    # scenario-player/faults.py: on PYTHONPATH via env.sh, and tests/conftest.py's sys.path.
+    import faults as ngt_faults
+
+    scope = {"run": run_number}
+    fault = ngt_faults.take_fault(_FAULTS, scope)
+    if fault is None and faults_file:
+        with ngt_faults.locked_json_file(faults_file):
+            fault = ngt_faults.consume_fault(faults_file, scope)
+    return fault
+
+
+def _default_message(mode, status=None):
+    """Canned error text that reads like a genuine OMS outage."""
+    if mode == "connection_error":
+        return (
+            "HTTPSConnectionPool(host='cmsoms.cms', port=443): Max retries exceeded with "
+            "url: /agg/api/v1/runs (Caused by NewConnectionError('<urllib3.connection."
+            "HTTPSConnection object>: Failed to establish a new connection: "
+            "[Errno 111] Connection refused'))"
+        )
+    if mode == "timeout":
+        return "HTTPSConnectionPool(host='cmsoms.cms', port=443): Read timed out. (read timeout=None)"
+    if mode == "http_error":
+        kind = "Server" if status is not None and status >= 500 else "Client"
+        reason = {s.value: s.phrase for s in HTTPStatus}.get(status, "Error")
+        return f"{status} {kind} Error: {reason} for url: https://cmsoms.cms/agg/api/v1/runs"
+    if mode == "malformed_json":
+        return "Expecting value: line 1 column 1 (char 0)"
+    return "stub OMS simulated failure"
+
+
 class _Response:
-    def __init__(self, payload, status_code=200):
+    def __init__(self, payload, status_code=200, malformed_json=False):
         self._payload = payload
         self.status_code = status_code
-        self.text = json.dumps(payload)
+        self._malformed_json = malformed_json
+        if malformed_json:
+            # an unhealthy OMS (or the proxy in front of it) answers with an HTML error page
+            self.text = (
+                "<html><head><title>503 Service Unavailable</title></head><body><h1>Service Unavailable</h1>"
+                "<p>The server is temporarily unable to service your request.</p></body></html>"
+            )
+        else:
+            self.text = json.dumps(payload)
 
     def json(self):
+        if self._malformed_json:
+            raise requests.exceptions.JSONDecodeError(_default_message("malformed_json"), self.text, 0)
         return self._payload
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise RuntimeError(f"stub OMS response returned HTTP {self.status_code}")
+            raise requests.exceptions.HTTPError(_default_message("http_error", self.status_code), response=self)
 
 
 class _Query:
@@ -118,9 +197,20 @@ class _Query:
     def data(self):
         if _FAIL:
             raise RuntimeError("stub OMS is configured to fail (omsapi.set_failure(True))")
+
+        run_number = _run_number_filter(self._filters)
+        fault = _consume_fault(run_number)
+
+        if fault and fault["mode"] in ("connection_error", "timeout"):
+            cls = requests.exceptions.ConnectionError if fault["mode"] == "connection_error" else requests.exceptions.Timeout
+            raise cls(_default_message(fault["mode"]))
+
         matched = self._matching_runs()
         payload = {"data": [{"attributes": dict(r)} for r in matched]}
-        return _Response(payload)
+
+        status = fault["status"] if fault and fault["mode"] == "http_error" else 200
+        malformed = bool(fault) and fault["mode"] == "malformed_json"
+        return _Response(payload, status_code=status, malformed_json=malformed)
 
 
 class OMSAPI:
