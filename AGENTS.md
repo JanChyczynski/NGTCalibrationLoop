@@ -31,9 +31,13 @@ specific to one person's OS/venv/process setup belongs in a local, gitignored ov
     `airflow_demo.sh`, `*_interactive_demo.sh`.
 - `scenario-player/` — the engine-agnostic offline simulator, with no Airflow dependency:
   `sim_env.sh`, `seed.py`, `scenario_player.py` (+ `scenarios/*.yaml`), `faults.py` (the shared
-  fault-injection vocabulary) and `bin/`, the fake OMS/EOS/CMSSW toolchain. Not a Python
-  package: `faults`/`seed`/`scenario_player` are top-level modules found via `sys.path`
-  (see `tests/conftest.py`, `sim_env.sh`'s `PYTHONPATH`).
+  fault-injection vocabulary), `expectations.py`/`conddb.py` (a scenario's `expect:` block and
+  the dummy conditions-DB ledger it's checked against) and `bin/`, the fake OMS/EOS/CMSSW
+  toolchain — whose `_fakeprov.py` is the single definition of the provenance-manifest and
+  ledger formats, kept in `bin/` because the fakes run from a *copy* of that directory with only
+  the stdlib importable. Not a Python package:
+  `faults`/`seed`/`scenario_player`/`conddb`/`expectations` are top-level modules found via
+  `sys.path` (see `tests/conftest.py`, `sim_env.sh`'s `PYTHONPATH`).
 - `calibrationYAML/` — per-calibration config.
 - `tests/` — pytest suite; `tests/stubs` is the fake `omsapi` package (also `pip install -e`'d
   by the live demo), `tests/support` has fake-subprocess/EOS helpers used across the step2/3/4
