@@ -63,3 +63,23 @@ faults:
     calibration: EcalPedestals
     run: 900001
     at: 150
+
+# Every fault above is single-shot and sits well inside the retry budget that
+# covers it, so the *point* of this scenario is that the faults make no
+# difference to the end result: the run must still finish with one payload
+# covering exactly LS 1-3. If a retry policy regresses -- the step2 crash or
+# the upload failure no longer being absorbed -- this expectation is what
+# turns that into a failed scenario rather than something to spot in the
+# Airflow UI.
+#
+# quiet_for/settle_timeout are generous because the retries themselves are
+# slow by design: step2's launch retry backs off exponentially from 2min and
+# the upload's from 1min (see airflow_automation/airflow_dags/_process_tasks.py's
+# LAUNCH_RETRY_KWARGS/UPLOAD_RETRY_KWARGS), and the last fault only arms at
+# t=+150s.
+expect:
+  settle_timeout: 1200
+  quiet_for: 120
+  allow_extra: {before: true}
+  payloads:
+    - {calibration: EcalPedestals, run: 900001, lumisections: 1-3}

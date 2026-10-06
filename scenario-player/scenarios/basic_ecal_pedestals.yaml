@@ -14,3 +14,20 @@ runs:
       - {ls: 52, after: 20}   # arrives 20s after LS 51
       - {ls: 53, after: 20}   # arrives 20s after LS 52
     end_after: 30              # run ends 30s after its last lumisection
+
+# The run must end with one payload covering exactly LS 51-53.
+#
+# `before: true` tolerates the intermediate uploads on the way there: Step 4
+# re-harvests everything available on each cycle rather than just the new
+# delta (ngt_calibration_loop/step4.py's check_files_for_processing), so a
+# healthy run climbs through growing payloads -- {51}, {51,52}, {51,52,53} --
+# and exactly how many of those land depends on when Step 3's outputs appear
+# relative to Step 4's polling. `after: false` (the default) still fails the
+# scenario if anything is uploaded once that final payload is in, which is
+# what catches a DAG re-firing on a coalesced asset event after the run ended.
+expect:
+  settle_timeout: 600
+  quiet_for: 45
+  allow_extra: {before: true}
+  payloads:
+    - {calibration: EcalPedestals, run: 398600, lumisections: 51-53}

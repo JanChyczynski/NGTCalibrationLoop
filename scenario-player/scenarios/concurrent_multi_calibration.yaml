@@ -30,3 +30,21 @@ runs:
       - {ls: 3, after: 15}
       - {ls: 4, after: 15}
     end_after: 20
+
+# Both listed calibrations must end with a payload covering exactly LS 1-4,
+# and -- because allow_extra.payloads stays false -- BeamSpot must produce
+# none at all. That is the assertion this scenario exists for: the run primer
+# eagerly latches BeamSpot onto the run even though no BeamSpot files are ever
+# seeded, and its file watcher is supposed to wait and then give up rather
+# than harvest and upload something. A BeamSpot row in the ledger would fail
+# here as an unexpected payload.
+#
+# `ordered` stays false deliberately: the two calibrations process
+# concurrently, so which of them uploads first is genuinely nondeterministic.
+expect:
+  settle_timeout: 900
+  quiet_for: 60
+  allow_extra: {before: true}
+  payloads:
+    - {calibration: EcalPedestals, run: 398800, lumisections: 1-4}
+    - {calibration: SiStripBad,    run: 398800, lumisections: 1-4}
