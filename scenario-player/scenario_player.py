@@ -32,8 +32,31 @@ which is the physically sensible way to model "multiple calibrations
 processing concurrently" -- not two different run numbers overlapping in
 time. See scenario-player/scenarios/*.yaml for more worked examples.
 
+A scenario can also arm simulated OMS/cmsRun/upload_conditions.py failures at
+scheduled points on the same timeline, via a top-level `faults:` list, e.g.:
+
+    faults:
+      - target: oms                # oms | cmsrun | upload_conditions
+        mode: connection_error     # see faults.py
+        run: 398600                # optional scope
+        at: 15                     # seconds since playback start
+        times: 2                   # default 1 (single-shot); "unlimited" to persist
+
+      - target: cmsrun
+        mode: exit_code
+        exit_code: 139
+        calibration: EcalPedestals  # REQUIRED for cmsrun/upload_conditions
+        step: step2                 # optional further scope
+        at: 40
+
+See scenario-player/scenarios/fault_injection_demo.yaml for a full worked example, and
+faults.py's module docstring for why this crosses into a
+file under $NGT_DEV_HOME/faults/ (via scenario-player/seed.py's arm_fault()) rather than
+an in-memory call: this process and the processes running the loops are
+different OS processes.
+
 This script only calls scenario-player/seed.py's library functions
-(seed_run/add_ls/end_run) -- it has no orchestration-engine import at all.
+(seed_run/add_ls/end_run/arm_fault) -- it has no orchestration-engine import at all.
 """
 # see def parse_args below to see available commands
 import argparse
@@ -50,6 +73,7 @@ from typing import Optional
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import faults as ngt_faults  # noqa: E402  -- scenario-player/faults.py, the shared fault vocabulary
 import seed  # noqa: E402  -- scenario-player/seed.py, reused as a library (engine-agnostic)
 
 MONITOR_INTERVAL_SECONDS = 2.0  # fast enough to feel live, slow enough to stay quiet
@@ -89,8 +113,8 @@ def parse_args():
     parser.add_argument(
         "--only-list-calibrations",
         action="store_true",
-        help="ignore every other argument: print the calibrations this scenario's events "
-             "touch, one per line, and exit (what live_demo.sh's `play` uses to know which "
+        help="ignore every other argument: print the calibrations this scenario's runs "
+             "feed, one per line, and exit (what live_demo.sh's `play` uses to know which "
              "loops to start)",
     )
     args = parser.parse_args()
@@ -131,20 +155,33 @@ def _load_scenario(path):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def _describe_fault(spec: ngt_faults.FaultSpec):
+    scope_bits = [
+        f"{k}={v}"
+        for k, v in (("calibration", spec.calibration), ("run", spec.run), ("step", spec.step))
+        if v is not None
+    ]
+    scope = f" ({', '.join(scope_bits)})" if scope_bits else ""
+    return f"arm-fault --target {spec.target} --mode {spec.mode}{scope}"
+
+
 @dataclass
 class Event:
     at: float  # seconds since playback start
-    kind: str  # "start_run" | "add_ls" | "end_run"
-    calibration: str
-    run: int
+    kind: str  # "start_run" | "add_ls" | "end_run" | "fault"
+    calibration: Optional[str] = None
+    run: Optional[int] = None
     ls: Optional[int] = None
     minutes_ago: float = 2.0
+    fault: Optional[ngt_faults.FaultSpec] = None
 
     def describe(self):
         if self.kind == "start_run":
             return f"seed-run --calibration {self.calibration} --run {self.run}"
         if self.kind == "add_ls":
             return f"add-ls --calibration {self.calibration} --run {self.run} --ls {self.ls}"
+        if self.kind == "fault":
+            return _describe_fault(self.fault)
         return f"end-run --run {self.run}"
 
     def fire(self):
@@ -154,6 +191,19 @@ class Event:
             seed.add_ls(self.calibration, self.run, self.ls)
         elif self.kind == "end_run":
             seed.end_run(self.run)
+        elif self.kind == "fault":
+            spec = self.fault
+            seed.arm_fault(
+                spec.target,
+                spec.mode,
+                status=spec.status,
+                exit_code=spec.exit_code,
+                calibration=spec.calibration,
+                run=spec.run,
+                step=spec.step,
+                times=spec.times,
+                message=spec.message,
+            )
         else:
             raise ValueError(f"unknown event kind {self.kind!r}")
 
@@ -217,6 +267,12 @@ def build_timeline(scenario):
                 events.append(Event(t, "add_ls", calibration, run, ls=ls_spec["ls"]))
         t += float(spec.get("end_after", 0))
         events.append(Event(t, "end_run", calibrations[0], run))
+
+    for fault_entry in scenario.get("faults", []):
+        fault_entry = dict(fault_entry)
+        at = float(fault_entry.pop("at", 0))
+        events.append(Event(at, "fault", fault=ngt_faults.parse_fault_spec(fault_entry)))
+
     events.sort(key=lambda e: e.at)
     return events
 
@@ -391,8 +447,10 @@ def main():
         # nothing else on stdout -- an empty scenario prints nothing at all, rather than
         # prose a caller looping over the output would take for a calibration name.
         # build_timeline still runs, so a malformed scenario fails here, before whoever
-        # asked has started anything.
-        for calibration in sorted({e.calibration for e in build_timeline(_load_scenario(args.scenario))}):
+        # asked has started anything. Fault events are skipped: an oms fault has no
+        # calibration at all, and a scoped one never needs loops its runs don't feed.
+        events = build_timeline(_load_scenario(args.scenario))
+        for calibration in sorted({e.calibration for e in events if e.kind != "fault"}):
             _emit(calibration)
         return None
 
