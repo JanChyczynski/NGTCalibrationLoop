@@ -405,8 +405,10 @@ expect:
 A few things worth knowing before writing one:
 
 - **`lumisections:`** accepts `51-53`, `[51, 52, 53]`, `"51-53,57"` or a bare `51`.
-- **Every flag is overridable inside a `payloads` entry**, for the per-scenario flexibility
-  (`ordered` and `allow_extra.payloads` excepted -- they describe the list as a whole).
+- **The flags are block-level**, applying to the whole `expect:` block rather than to individual
+  payloads -- whether an upload is an unwanted extra, or a duplicate, is a property of a
+  `(calibration, run)` rather than of one listed entry. Writing a flag inside a `payloads` entry is
+  an error that tells you to move it up a level.
 - **`payloads: []`** with `allow_extra: false` asserts that nothing at all reached the conditions
   DB, which is how a total-failure scenario is expressed. An injected upload fault writes no row.
 - **`before` and `after` are separate knobs on purpose.** Step 4 deliberately re-harvests
