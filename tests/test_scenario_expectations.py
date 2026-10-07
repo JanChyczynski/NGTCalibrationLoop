@@ -213,6 +213,32 @@ def test_allow_duplicates_with_allow_extra_after_accepts_a_repeated_set():
     assert verdict.ok, verdict.problems
 
 
+# --- empty payloads ------------------------------------------------------------
+
+
+def test_an_empty_payload_always_fails_even_where_extras_are_tolerated():
+    """Found live: a torn provenance read recorded a payload covering nothing,
+    and it sat quietly inside allow_extra.before while the scenario passed.
+    A harvest only runs when there is something to harvest, so there is no
+    tolerance flag for this -- it always fails."""
+    verdict = check(
+        {"allow_extra": True, "payloads": [one("51-53")]},
+        [row(1, []), row(2, [51, 52, 53])],
+    )
+    assert not verdict.ok
+    assert any("no lumisections" in problem for problem in verdict.problems)
+
+
+def test_an_empty_payload_fails_even_when_it_is_the_only_upload():
+    verdict = check({"payloads": []}, [row(1, [])])
+    assert not verdict.ok
+    assert any("no lumisections" in problem for problem in verdict.problems)
+
+
+def test_no_empty_payload_complaint_when_every_upload_carries_lumisections():
+    assert check({"payloads": [one("51-53")]}, [row(1, [51, 52, 53])]).ok
+
+
 # --- extra-upload categories ---------------------------------------------------
 
 
