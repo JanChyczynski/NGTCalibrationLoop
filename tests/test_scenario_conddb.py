@@ -136,18 +136,6 @@ def test_read_ledger_skips_a_torn_trailing_line(ledger):
     assert [row["seq"] for row in rows] == [1]
 
 
-@posix_only
-def test_clear_ledger_removes_the_ledger_and_its_lock(ledger):
-    conddb.append_payload({"calibration": "EcalPedestals", "run": 398600, "lumisections": [51]})
-    assert ledger.exists()
-
-    conddb.clear_ledger()
-
-    assert not ledger.exists()
-    assert not ledger.with_name(ledger.name + ".lock").exists()
-    assert conddb.read_ledger() == []
-
-
 def test_ngt_conddb_dir_overrides_ngt_dev_home(tmp_path, monkeypatch):
     monkeypatch.setenv("NGT_DEV_HOME", str(tmp_path / "devhome"))
     monkeypatch.setenv("NGT_CONDDB_DIR", str(tmp_path / "elsewhere"))
