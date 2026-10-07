@@ -39,6 +39,7 @@ Two formats are defined:
 import json
 import os
 import re
+import tempfile
 from datetime import datetime, timezone
 
 PROVENANCE_MAGIC = "(FAKE-NGT-PROVENANCE-v1)"
@@ -76,10 +77,30 @@ def write_provenance(path, *, step, calibration, run, lumisections, inputs):
         "inputs": sorted(os.path.basename(str(p)) for p in inputs),
         "produced_at": utc_now(),
     }
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(PROVENANCE_MAGIC + "\n")
-        json.dump(manifest, f, indent=2)
-        f.write("\n")
+    # Atomically (temp file + os.replace), the same way
+    # scenario-player/faults.py's atomic_write_json does and for the same
+    # reason: a plain open(path, 'w') truncates and then fills, so a
+    # concurrent reader can observe a half-written manifest. That is not
+    # hypothetical here -- step4's job dirs are content-hashed on their
+    # input set, so two DAG runs seeing the same available inputs harvest
+    # into the *same* directory, and a live run caught uploadConditions.py
+    # reading a .db while another harvest was rewriting it. The torn read
+    # was indistinguishable from 'this file has no provenance', so the
+    # payload went into the ledger with no lumisections at all.
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".tmp-prov-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(PROVENANCE_MAGIC + "\n")
+            json.dump(manifest, f, indent=2)
+            f.write("\n")
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     return manifest
 
 
