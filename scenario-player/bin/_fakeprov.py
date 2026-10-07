@@ -49,19 +49,6 @@ LEDGER_NAME = "payloads.jsonl"
 # writes and scenario-player/bin/edmFileUtil parses: run<RUN>_ls<LS>....root.
 RAW_LS_RE = re.compile(r"run(\d+)_ls(\d+)")
 
-# seq first so a hand-read of the ledger scans in upload order; the rest in
-# the order a human debugging a failed expectation wants them.
-LEDGER_FIELD_ORDER = (
-    "seq",
-    "uploaded_at",
-    "calibration",
-    "run",
-    "lumisections",
-    "n_input_files",
-    "db_file",
-    "job_dir",
-)
-
 
 def utc_now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -144,13 +131,6 @@ def ledger_path():
     return os.path.join(conddb_dir(), LEDGER_NAME)
 
 
-def order_row(row):
-    """LEDGER_FIELD_ORDER first, anything else appended -- readability only."""
-    ordered = {key: row[key] for key in LEDGER_FIELD_ORDER if key in row}
-    ordered.update({key: value for key, value in row.items() if key not in ordered})
-    return ordered
-
-
 def read_ledger(path=None):
     """Every upload row, oldest first. A torn trailing line (a writer killed
     mid-append) is skipped rather than raising -- the ledger is read while
@@ -190,25 +170,15 @@ def append_payload(record, path=None):
     with open(lock_path, "a+") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
         try:
-            row = dict(record)
-            row["seq"] = len(read_ledger(path)) + 1
-            row.setdefault("uploaded_at", utc_now())
-            row = order_row(row)
+            # seq and uploaded_at first, so a hand-read of the ledger
+            # scans in upload order; the caller's own fields follow.
+            record = dict(record)
+            record.pop("seq", None)
+            uploaded_at = record.pop("uploaded_at", None) or utc_now()
+            row = {"seq": len(read_ledger(path)) + 1, "uploaded_at": uploaded_at, **record}
             with open(path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(row) + "\n")
             return row
         finally:
             fcntl.flock(lock_file, fcntl.LOCK_UN)
 
-
-def clear_ledger(path=None):
-    """Drop the ledger (and its lock file). Covered for free by sim_env.sh's
-    wholesale `rm -rf $NGT_DEV_HOME` reset; this is for clearing uploads
-    mid-session without resetting run/EOS state too, mirroring
-    scenario-player/seed.py's clear_faults."""
-    path = path or ledger_path()
-    for candidate in (path, path + ".lock"):
-        try:
-            os.unlink(candidate)
-        except OSError:
-            pass
