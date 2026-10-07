@@ -28,7 +28,6 @@ LEDGER_NAME = _fakeprov.LEDGER_NAME
 PROVENANCE_MAGIC = _fakeprov.PROVENANCE_MAGIC
 
 append_payload = _fakeprov.append_payload
-clear_ledger = _fakeprov.clear_ledger
 conddb_dir = _fakeprov.conddb_dir
 ledger_path = _fakeprov.ledger_path
 read_ledger = _fakeprov.read_ledger
