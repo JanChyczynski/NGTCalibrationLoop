@@ -80,7 +80,14 @@ sim_setup() {
   mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin,faults,conddb}
   mkdir -p "$NGT_DEV_HOME/cmssw_home/CMSSW_16_0_7_patch1/src"
 
-  cp "$REPO_DIR"/scenario-player/bin/* "$NGT_DEV_HOME/bin/"
+  # File-by-file, not `cp bin/*`: bin/ also holds a __pycache__ directory now
+  # that scenario-player/conddb.py imports _fakeprov from it, and a bare glob
+  # copy treats that directory as an error. Callers run with `set -e` (see
+  # airflow_automation/airflow_demo/airflow_demo.sh), so that aborted the whole
+  # setup here -- after the copy, but before patching calibrationYAML or
+  # writing ngtParameters.jsn, leaving a half-built $NGT_DEV_HOME whose only
+  # symptom was a FileNotFoundError much later, from the scenario player.
+  find "$REPO_DIR/scenario-player/bin" -maxdepth 1 -type f -exec cp {} "$NGT_DEV_HOME/bin/" \;
   chmod +x "$NGT_DEV_HOME"/bin/*
 
   cat > "$NGT_DEV_HOME/ngtParameters.jsn" <<JSON
