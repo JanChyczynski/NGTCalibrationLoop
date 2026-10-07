@@ -348,6 +348,28 @@ def _check_duplicates(key_rows, expectations, problems):
             seen[signature] = row.get("seq")
 
 
+def _check_empty_payloads(rows, problems):
+    """A payload covering no lumisections at all is never legitimate: Step 4
+    only starts a cycle when there is something to harvest, so an empty one
+    means either nothing of substance reached the conditions DB or the fake
+    upload could not read the .db's provenance manifest.
+
+    Deliberately not behind a tolerance flag. Unlike an extra or a duplicate
+    there is no scenario in which this is the wanted outcome, and a live run
+    showed why it needs to fail loudly: an empty payload sat quietly inside
+    allow_extra.before, so the scenario passed while a real defect (a torn
+    provenance write, raced between two harvests sharing one content-hashed
+    job dir) went unnoticed.
+    """
+    for row in rows:
+        if not _row_ls(row):
+            problems.append(
+                f"payload with no lumisections: {_describe_row(row)} -- a harvest only runs when "
+                "there is something to harvest, so either nothing of substance was uploaded or the "
+                ".db's provenance could not be read (check that job's upload_stderr.log)"
+            )
+
+
 def _check_order(all_matches, problems):
     """`ordered` only governs entries belonging to *different* keys -- order
     within one key is already enforced by _align's forward-only cursor."""
@@ -364,6 +386,7 @@ def _check_order(all_matches, problems):
 def evaluate(expectations: Expectations, rows) -> Verdict:
     """Check a ledger (as read by conddb.read_ledger) against Expectations."""
     problems = []
+    _check_empty_payloads(rows, problems)
     rows_by_key = _group_rows(rows)
 
     entries_by_key = {}
