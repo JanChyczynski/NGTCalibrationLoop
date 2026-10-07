@@ -9,6 +9,7 @@ skipped off POSIX rather than silently exercising a different code path.
 """
 import json
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -163,6 +164,61 @@ def test_write_then_read_provenance_round_trips(tmp_path):
     assert manifest["lumisections"] == [51, 52]  # sorted
     assert manifest["inputs"] == ["run398600_LS0051To0052_ecalPedsStep2.root"]  # basenames only
     assert path.read_text(encoding="utf-8").startswith(conddb.PROVENANCE_MAGIC)
+
+
+def test_write_provenance_never_exposes_a_half_written_manifest(tmp_path):
+    """Found live: step4 job dirs are content-hashed on their input set, so two
+    DAG runs seeing the same inputs harvest into the *same* directory -- and
+    uploadConditions.py read a .db while another harvest was rewriting it. A
+    truncating open() made that read return None, indistinguishable from "no
+    provenance", and the payload was recorded with no lumisections. The write
+    must therefore be atomic: a reader sees either the old file or the new one.
+    """
+    path = tmp_path / "promptCalibConditions.db"
+    conddb.write_provenance(
+        path, step="step4", calibration="EcalPedestals", run=1, lumisections={1}, inputs=["a.root"]
+    )
+
+    seen = []
+
+    def reader():
+        for _ in range(400):
+            seen.append(conddb.read_provenance(path))
+
+    writer_done = []
+
+    def writer():
+        for n in range(2, 60):
+            conddb.write_provenance(
+                path,
+                step="step4",
+                calibration="EcalPedestals",
+                run=1,
+                lumisections=set(range(1, n)),
+                inputs=["a.root"] * n,
+            )
+        writer_done.append(True)
+
+    threads = [threading.Thread(target=reader), threading.Thread(target=writer)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert writer_done, "the writer thread did not finish"
+    # Every observation must be a complete manifest -- never None (a torn read)
+    # and never missing its lumisections.
+    assert seen, "the reader thread observed nothing"
+    assert all(m is not None for m in seen), "a reader observed a half-written manifest"
+    assert all(m.get("lumisections") for m in seen)
+
+
+def test_write_provenance_leaves_no_temp_files_behind(tmp_path):
+    path = tmp_path / "out.root"
+    conddb.write_provenance(
+        path, step="step2", calibration="EcalPedestals", run=1, lumisections={1}, inputs=[]
+    )
+    assert [q.name for q in tmp_path.iterdir()] == ["out.root"]
 
 
 def test_read_provenance_of_a_file_that_is_not_ours_is_none(tmp_path):
