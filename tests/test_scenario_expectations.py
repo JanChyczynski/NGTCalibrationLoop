@@ -45,30 +45,25 @@ def test_parse_minimal_block_applies_documented_defaults():
     assert parsed.settle_timeout == ngt_expectations.DEFAULT_SETTLE_TIMEOUT
     assert parsed.quiet_for == ngt_expectations.DEFAULT_QUIET_FOR
     assert parsed.ordered is False
-    assert parsed.allow_extra_payloads is False
-    assert parsed.defaults == ngt_expectations.Tolerances()
+    assert parsed.allow_duplicates is False
+    assert (parsed.extra_payloads, parsed.extra_before, parsed.extra_between, parsed.extra_after) == (
+        False,
+        False,
+        False,
+        False,
+    )
     assert parsed.payloads[0].lumisections == frozenset({51, 52, 53})
 
 
 def test_parse_scalar_allow_extra_sets_every_category():
     parsed = ngt_expectations.parse_expectations({"allow_extra": True, "payloads": [one(51)]})
 
-    assert parsed.allow_extra_payloads is True
-    tolerances = parsed.payloads[0].tolerances
-    assert (tolerances.extra_before, tolerances.extra_between, tolerances.extra_after) == (True, True, True)
-
-
-def test_parse_entry_overrides_block_defaults():
-    parsed = ngt_expectations.parse_expectations(
-        {
-            "allow_duplicates": True,
-            "payloads": [one(51), one(52, allow_duplicates=False, allow_extra={"before": True})],
-        }
+    assert (parsed.extra_payloads, parsed.extra_before, parsed.extra_between, parsed.extra_after) == (
+        True,
+        True,
+        True,
+        True,
     )
-
-    assert parsed.payloads[0].tolerances.allow_duplicates is True
-    assert parsed.payloads[1].tolerances.allow_duplicates is False
-    assert parsed.payloads[1].tolerances.extra_before is True
 
 
 def test_parse_requires_payloads_and_says_how_to_mean_nothing():
@@ -76,11 +71,15 @@ def test_parse_requires_payloads_and_says_how_to_mean_nothing():
         ngt_expectations.parse_expectations({"allow_extra": False})
 
 
-def test_parse_rejects_allow_extra_payloads_on_a_single_entry():
-    """It is about whole (calibration, run) keys nobody listed, so it is
-    meaningless per entry -- better to say so than to silently ignore it."""
-    with pytest.raises(ngt_expectations.ExpectationError, match="not meaningful on a single entry"):
-        ngt_expectations.parse_expectations({"payloads": [one(51, allow_extra={"payloads": True})]})
+@pytest.mark.parametrize("flag", ["allow_duplicates", "allow_extra", "ordered", "quiet_for"])
+def test_parse_points_a_misplaced_block_level_flag_back_up_a_level(flag):
+    """The flags describe the whole block -- whether an upload is an unwanted
+    extra, or a duplicate, is a property of a (calibration, run) rather than
+    of one listed payload. Saying so beats reporting "unknown field", and
+    beats an earlier version of this module that accepted them per entry and
+    then had to pick one entry's flags arbitrarily for the whole key."""
+    with pytest.raises(ngt_expectations.ExpectationError, match="move them up a level"):
+        ngt_expectations.parse_expectations({"payloads": [one(51, **{flag: True})]})
 
 
 @pytest.mark.parametrize(
@@ -347,14 +346,18 @@ def test_wait_for_settle_returns_once_the_ledger_goes_quiet(monkeypatch, tmp_pat
     monkeypatch.setenv("NGT_DEV_HOME", str(tmp_path))
     monkeypatch.delenv("NGT_CONDDB_DIR", raising=False)
     expectations = ngt_expectations.parse_expectations(
-        {"quiet_for": 5, "poll_interval": 1, "settle_timeout": 100, "payloads": []}
+        {"quiet_for": 5, "settle_timeout": 100, "payloads": []}
     )
 
     now = [0.0]
     monkeypatch.setattr(ngt_expectations.conddb, "read_ledger", lambda path=None: [])
 
     settled, rows = ngt_expectations.wait_for_settle(
-        expectations, log=lambda *a: None, sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0]
+        expectations,
+        log=lambda *a: None,
+        sleep=lambda s: now.__setitem__(0, now[0] + s),
+        clock=lambda: now[0],
+        poll_interval=1,
     )
 
     assert settled is True
@@ -365,7 +368,7 @@ def test_wait_for_settle_returns_once_the_ledger_goes_quiet(monkeypatch, tmp_pat
 def test_wait_for_settle_reports_not_settled_when_uploads_keep_arriving(monkeypatch, tmp_path):
     monkeypatch.setenv("NGT_DEV_HOME", str(tmp_path))
     expectations = ngt_expectations.parse_expectations(
-        {"quiet_for": 5, "poll_interval": 1, "settle_timeout": 20, "payloads": []}
+        {"quiet_for": 5, "settle_timeout": 20, "payloads": []}
     )
 
     now = [0.0]
@@ -378,7 +381,11 @@ def test_wait_for_settle_reports_not_settled_when_uploads_keep_arriving(monkeypa
     monkeypatch.setattr(ngt_expectations.conddb, "read_ledger", ever_growing)
 
     settled, rows = ngt_expectations.wait_for_settle(
-        expectations, log=lambda *a: None, sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0]
+        expectations,
+        log=lambda *a: None,
+        sleep=lambda s: now.__setitem__(0, now[0] + s),
+        clock=lambda: now[0],
+        poll_interval=1,
     )
 
     assert settled is False
