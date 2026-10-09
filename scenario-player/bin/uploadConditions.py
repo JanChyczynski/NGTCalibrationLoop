@@ -159,17 +159,34 @@ def main():
 
     manifest = _fakeprov.read_provenance(db_file)
     if manifest is None:
-        # A real .db, or a fake one produced before provenance existed. Record
-        # the upload anyway (an unrecorded upload would read as "the pipeline
-        # never uploaded", a far more confusing failure) but with no
-        # lumisections, so an expectation check fails loudly on the contents
-        # rather than silently passing on an empty set.
-        print(
-            f"(FAKE) uploadConditions.py: WARNING - no provenance manifest in {db_file}; "
-            "recording an upload with no lumisections",
-            file=sys.stderr,
+        # Fail, rather than record a payload with no lumisections.
+        #
+        # read_provenance returns None for two different things: "this file
+        # holds no manifest" and "I could not read this file *right now*".
+        # The second is real and transient. step4's job dirs are content-hashed
+        # on their input set (step4.py's _job_dir_name), so two DAG runs that
+        # see the same available inputs harvest into the *same* directory --
+        # and the generated HARVESTING.sh has a window, between cmsRun writing
+        # promptCalibConditions.db and the mv onto the final name, where the
+        # final .db does not exist yet. An upload landing in that window used
+        # to log a warning and record an empty payload, which is strictly
+        # worse than failing: it poisons the ledger with a phantom row that
+        # fails the expectation *and* counts as an extra upload, while the
+        # real payload lands separately a moment later.
+        #
+        # Exiting nonzero instead hands it to step4_upload's own retry policy
+        # (5 retries, see airflow_automation/airflow_dags/_process_tasks.py's
+        # UPLOAD_RETRY_KWARGS), by which time the harvest has finished -- and
+        # it is what a real uploadConditions.py does when handed a payload it
+        # cannot read, rather than uploading something empty.
+        missing = not os.path.exists(db_file)
+        detail = (
+            f"cannot open {db_file}: no such file -- a concurrent harvest has not yet moved it into place"
+            if missing
+            else f"{db_file} is not a readable payload: no provenance manifest found"
         )
-        manifest = {}
+        print(f"(FAKE) uploadConditions.py: ERROR - {detail}", file=sys.stderr)
+        sys.exit(1)
 
     scope = _scope_from_cwd()
     row = _fakeprov.append_payload(
