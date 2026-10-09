@@ -250,17 +250,48 @@ def test_upload_does_not_read_the_metadata_txt_step4_writes(chain):
     assert "tag" not in latest
 
 
-def test_upload_of_a_db_without_provenance_records_an_empty_payload(chain):
-    """A loud, failing-but-explicable row beats either crashing or silently
-    recording nothing (which would read as "the pipeline never uploaded")."""
+def _run_expecting_failure(script, args, cwd):
+    result = subprocess.run(
+        [sys.executable, str(FAKE_BIN / script), *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0, f"{script} unexpectedly succeeded: {result.stdout}"
+    return result
+
+
+def test_upload_fails_rather_than_recording_a_payload_it_cannot_read(chain):
+    """Recording an empty payload would be worse than failing: it poisons the
+    ledger with a phantom row that fails the expectation *and* counts as an
+    extra upload, while the real payload lands separately a moment later."""
     harvest = chain / "harvestJob_0000000000"
     harvest.mkdir()
     (harvest / "NGTCalibEcalPedestals.db").write_bytes(b"not one of ours\n")
 
-    result = _run("uploadConditions.py", ["NGTCalibEcalPedestals.db"], harvest)
+    result = _run_expecting_failure("uploadConditions.py", ["NGTCalibEcalPedestals.db"], harvest)
 
-    assert "WARNING" in result.stderr
-    assert conddb.read_ledger()[0]["lumisections"] == []
+    assert "no provenance manifest" in result.stderr
+    assert conddb.read_ledger() == []
+
+
+def test_upload_fails_when_a_concurrent_harvest_has_not_yet_moved_the_db_into_place(chain):
+    """Found live. step4's job dirs are content-hashed on their input set, so
+    two DAG runs seeing the same inputs harvest into the *same* directory, and
+    the generated HARVESTING.sh has a window -- between cmsRun writing
+    promptCalibConditions.db and the mv onto the final name -- where the final
+    .db does not exist. An upload landing in that window must fail, so
+    step4_upload's retry policy picks it up once the harvest has finished,
+    rather than recording a lumisection-less payload."""
+    harvest = chain / "harvestJob_1234512345"
+    harvest.mkdir()
+    (harvest / "promptCalibConditions.db").write_bytes(b"mid-harvest, not yet renamed\n")
+
+    result = _run_expecting_failure("uploadConditions.py", ["NGTCalibEcalPedestals.db"], harvest)
+
+    assert "no such file" in result.stderr
+    assert conddb.read_ledger() == []
 
 
 def test_upload_writes_no_row_when_a_fault_is_armed(chain, tmp_path):
