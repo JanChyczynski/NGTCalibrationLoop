@@ -141,11 +141,22 @@ def merge_input_lumisections(paths):
 # --------------------------------------------------------------------------
 
 
+# Where conddb_dir() looks when neither NGT_CONDDB_DIR nor NGT_DEV_HOME is
+# set. The fake binaries always run with NGT_DEV_HOME exported (sim_env.sh /
+# airflow_env.sh do it), so this only matters to player-side callers --
+# scenario-player/conddb.py overrides it to the same default
+# scenario-player/seed.py uses. Keeping a bare "." here was a live bug: the
+# player seeded runs into <repo>/demo-env via seed.py but then validated
+# ./conddb/payloads.jsonl relative to wherever it was launched from, so a
+# scenario that had actually uploaded reported "0 upload(s)".
+DEFAULT_DEV_HOME = "."
+
+
 def conddb_dir():
     explicit = os.environ.get("NGT_CONDDB_DIR")
     if explicit:
         return explicit
-    return os.path.join(os.environ.get("NGT_DEV_HOME", "."), CONDDB_DIR_NAME)
+    return os.path.join(os.environ.get("NGT_DEV_HOME") or DEFAULT_DEV_HOME, CONDDB_DIR_NAME)
 
 
 def ledger_path():

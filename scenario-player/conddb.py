@@ -14,12 +14,23 @@ fake binaries do not: lumisection-range parsing (`51-53`, `[51,52,53]`,
 """
 import os
 import sys
+from pathlib import Path
 
 _BIN_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "bin")
 if _BIN_DIR not in sys.path:
     sys.path.insert(0, _BIN_DIR)
 
 import _fakeprov  # noqa: E402  -- scenario-player/bin/_fakeprov.py, the format's single definition
+
+# This MUST stay in step with scenario-player/seed.py's NGT_DEV_HOME default.
+# The player seeds runs through seed.py and reads the ledger through here, so
+# if the two disagree about where $NGT_DEV_HOME is when it isn't exported, the
+# player seeds one directory and validates another. That is not hypothetical:
+# it made a live run report "0 upload(s)" while the ledger sat in demo-env/
+# with the right rows in it. _fakeprov.py cannot resolve this itself -- the
+# fake binaries run from a *copy* of bin/ under $NGT_DEV_HOME, so a path
+# derived from its own __file__ would be wrong there.
+_fakeprov.DEFAULT_DEV_HOME = str(Path(__file__).resolve().parent.parent / "demo-env")
 
 # Re-exported so callers (scenario_player.py, expectations.py, the tests) have
 # one obvious import for all of this and never reach into bin/ themselves.
