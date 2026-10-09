@@ -143,6 +143,21 @@ def test_ngt_conddb_dir_overrides_ngt_dev_home(tmp_path, monkeypatch):
     assert conddb.ledger_path() == str(tmp_path / "elsewhere" / conddb.LEDGER_NAME)
 
 
+def test_unset_ngt_dev_home_resolves_to_the_same_place_seed_py_uses(monkeypatch):
+    """Found live: the player seeds runs through seed.py and reads the ledger
+    through conddb, so the two MUST agree on where $NGT_DEV_HOME is when it
+    isn't exported. They didn't -- seed.py defaulted to <repo>/demo-env while
+    conddb defaulted to "." -- so a scenario that had genuinely uploaded
+    reported "0 upload(s) in ./conddb/payloads.jsonl" while the real ledger
+    sat in demo-env/ with the right rows in it."""
+    import seed  # scenario-player/seed.py, the other half of the pair
+
+    monkeypatch.delenv("NGT_DEV_HOME", raising=False)
+    monkeypatch.delenv("NGT_CONDDB_DIR", raising=False)
+
+    assert conddb.ledger_path() == str(seed.NGT_DEV_HOME / conddb.CONDDB_DIR_NAME / conddb.LEDGER_NAME)
+
+
 # --- provenance manifests ------------------------------------------------------
 
 
