@@ -28,11 +28,6 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
-# Fake, unvalidated placeholder values -- nothing in scenario-player/bin/ reads them, they're
-# only written into the fake ngtParameters.jsn / used for one directory name below.
-CMSSW_VERSION="CMSSW_16_0_7_patch1"
-SCRAM_ARCH="el8_amd64_gcc13"
-GLOBAL_TAG="160X_dataRun3_ExpressNGT_v0"
 CALIBRATIONS=(SiStripBad EcalPedestals BeamSpot)
 
 usage() {
@@ -83,28 +78,9 @@ activate_venv() {
 
 cmd_setup() {
   activate_venv
-  mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin}
-  mkdir -p "$NGT_DEV_HOME/cmssw_home/$CMSSW_VERSION/src"  # Step4 assumes this pre-exists (no cmsrel of its own)
-
-  # -r-less glob copy: skip subdirs (e.g. a stray __pycache__) instead of
-  # letting cp's non-zero exit on them silently abort this function under set -e.
-  for f in "$REPO_DIR"/scenario-player/bin/*; do
-    [ -f "$f" ] && cp "$f" "$NGT_DEV_HOME/bin/"
-  done
-  chmod +x "$NGT_DEV_HOME"/bin/*
-
-  cat > "$NGT_DEV_HOME/ngtParameters.jsn" <<JSON
-{
-    "SCRAM_ARCH": "$SCRAM_ARCH",
-    "CMSSW_VERSION": "$CMSSW_VERSION",
-    "GLOBAL_TAG": "$GLOBAL_TAG",
-    "DATA_BASE_PATH": "$NGT_DEV_HOME/data",
-    "LOG_BASE_PATH": "$NGT_DEV_HOME/logs",
-    "COND_AUTH_PATH": "$NGT_DEV_HOME/cond_auth"
-}
-JSON
-
-  python3 "$REPO_DIR/scenario-player/seed.py" setup
+  # shellcheck disable=SC1091
+  source "$REPO_DIR/scenario-player/sim_env.sh"
+  sim_setup
 
   echo
   echo "Set up $NGT_DEV_HOME"
