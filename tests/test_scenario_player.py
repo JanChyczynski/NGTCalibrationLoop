@@ -64,10 +64,9 @@ def test_build_timeline_merges_sequential_runs_by_absolute_time():
 
 
 def test_build_timeline_rejects_overlapping_runs():
-    # A run is one CMS-wide DAQ run -- there is only ever one active at a
-    # time, never two different run numbers concurrently. Multiple
-    # calibrations watching the *same* run at once belongs under one run's
-    # 'calibrations' list instead (see the next test).
+    # Only one run can be active at a time; concurrent calibrations on the
+    # same run go under one run's 'calibrations' list instead (see the next
+    # test).
     scenario = {
         "runs": [
             {"calibrations": ["SiStripBad"], "run": 1, "start_offset": 0, "end_after": 100},

@@ -110,6 +110,12 @@ def popen_calls(monkeypatch):
     return calls
 
 
+def _run_dir(loop, run_number):
+    """Where a loop's FSM looks for a given run's files under its own
+    pathWhereFilesAppear -- shared by test_step3.py and test_step4.py."""
+    return Path(loop.pathWhereFilesAppear) / f"run{run_number}"
+
+
 @pytest.fixture
 def fake_eos(monkeypatch):
     """Replace subprocess.run everywhere with a FakeEOS-backed responder for

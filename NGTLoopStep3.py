@@ -412,7 +412,7 @@ rm ALCAOUTPUT.sh
         logging.info("Machine reset!")
         self.runNumber = 0
         self.startTime = 0
-        self.timeoutInSeconds = 9 * 60 * 60  # 8 hours
+        self.timeoutInSeconds = 9 * 60 * 60  # 9 hours
         self.minimumFiles = 1
         self.maximumFiles = 5
         self.requestMinimumFiles = True

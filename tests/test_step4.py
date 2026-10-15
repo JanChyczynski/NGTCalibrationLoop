@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import NGTLoopStep4
+from conftest import _run_dir
 
 CALIBRATION = "EcalPedestals"
 WITNESS_NAME = "ecalPedsStep3_job.txt"
@@ -23,10 +24,6 @@ ROOT_NAME = "PromptCalibProdEcalPedestals.root"
 @pytest.fixture
 def loop(isolated_env):
     return NGTLoopStep4.NGTLoopStep4("Step4Test", CALIBRATION)
-
-
-def _run_dir(loop, run_number):
-    return Path(loop.pathWhereFilesAppear) / f"run{run_number}"
 
 
 def _seed_step3_job_output(run_dir, job_name, create_root_file=True):

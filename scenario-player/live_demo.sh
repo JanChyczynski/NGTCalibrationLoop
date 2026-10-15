@@ -1,8 +1,8 @@
 #!/bin/bash
 # Self-contained "live" runner for NGTLoopStep2/3/4.py against a fake OMS/EOS/CMSSW
-# toolchain (see scenario-player/bin/), so the FSM loops can be watched running for real --
-# real state transitions, real generated job scripts, real output files -- without
-# any CERN network access, real CMSSW, or the real omsapi client.
+# toolchain (see scenario-player/bin/), so the FSM loops can be watched producing actual
+# state transitions, job scripts, and output files -- without any CERN network
+# access, real CMSSW, or the real omsapi client.
 #
 # For pure logic testing (no live processes, no tmux) use pytest instead -- see
 # README.md's "Running the FSM logic locally / tests" section.

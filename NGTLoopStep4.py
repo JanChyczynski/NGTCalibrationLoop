@@ -195,7 +195,6 @@ class NGTLoopStep4:
         controlName = conf["step_3_witness_suffix"]
         targetName = conf["step_3_root_filename"]
         setOfControlFiles = set(targetPath.rglob(controlName))
-        setOfAvailableFiles = set()
         as_strings = {str(p) for p in setOfControlFiles}
         changed = {
             s[: -len(controlName)] + targetName if s.endswith(controlName) else s

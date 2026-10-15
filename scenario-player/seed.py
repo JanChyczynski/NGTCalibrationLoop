@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Helper for the engine adapters (airflow_automation/airflow_demo/airflow_demo.sh etc.): patches
-calibrationYAML into the scratch demo environment, and seeds/updates the fake
-OMS run data + fake "EOS" RAW files that drive a live calibration workflow.
+Helper for whatever drives the scratch demo environment: patches calibrationYAML
+into it, and seeds/updates the fake OMS run data + fake "EOS" RAW files that
+drive a live calibration workflow.
 
 The one-shot CLI verbs below (seed-run/add-ls/end-run/list-runs) are also
 exposed as plain importable functions (seed_run/add_ls/end_run) -- that's what
 scenario-player/scenario_player.py calls directly to play back a timed sequence of runs/
 lumisections instead of firing single commands by hand. Both ways of driving
-this file are engine-agnostic: neither knows or cares whether Airflow (or
-anything else) is watching $NGT_DEV_HOME.
+this file are engine-agnostic: neither knows or cares whether anything is
+watching $NGT_DEV_HOME.
 
 All state lives under $NGT_DEV_HOME (default ./demo-env, a gitignored directory
 inside this repo) -- delete it any time to reset the demo.

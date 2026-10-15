@@ -256,12 +256,11 @@ started (`start2` / `start3` / `start4` / `start-all`).
 
 `scenario-player/` holds everything needed to simulate a live run without CERN infrastructure:
 `sim_env.sh` (scratch environment + fake toolchain bootstrap), `seed.py` and `scenario_player.py`
-(driving/replaying fake runs, with `scenarios/*.yaml`), `faults.py` (the shared fault-injection
-vocabulary) and `bin/` (the fake `cmsRun`/`cmsDriver.py`/`edmFileUtil`/`xrdfs`/... toolchain).
-None of it imports or knows about a specific orchestration engine, so whatever runs the steps can
-be pointed at the same `$NGT_DEV_HOME`. It is not a Python package (hence the hyphen):
-`faults.py`, `seed.py` and `scenario_player.py` are top-level modules found via `sys.path`
-(`tests/conftest.py`, and `PYTHONPATH` from `sim_env.sh` for the fake `omsapi`'s live fault path).
+(driving/replaying fake runs, with `scenarios/*.yaml`) and `bin/` (the fake
+`cmsRun`/`cmsDriver.py`/`edmFileUtil`/`xrdfs`/... toolchain). None of it imports or depends on how
+`NGTLoopStep2/3/4.py` are launched, so it can be pointed at the same `$NGT_DEV_HOME` regardless.
+It is not a Python package (hence the hyphen): `seed.py` and `scenario_player.py` are top-level
+modules found via `sys.path` (`tests/conftest.py`, and `PYTHONPATH` from `sim_env.sh`).
 
 ### Scripting a timed sequence of runs/lumisections
 
@@ -278,23 +277,16 @@ python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_
                                                                                    # timeline only
 ```
 
-A scenario lists one or more runs, each with a start offset and a sequence of lumisections
-separated by delays (`after: N` seconds since the previous event in that run); multiple runs'
-events are merged into one global timeline by absolute time. A run is one CMS-wide DAQ run --
-there's only ever one active at a time across the whole experiment, so `build_timeline` rejects
-a scenario whose runs overlap in time -- but its lumisections can feed several calibrations at
-once, since one run's RAW data underlies every calibration stream: each run entry takes a
-`calibrations` list (always a list, even for one calibration), and the timeline plays the same
-start/LS-arrival/end sequence once per listed calibration while sharing that one run number (see
-`scenario-player/scenarios/concurrent_multi_calibration.yaml`). See
-`scenario-player/scenarios/*.yaml` for more worked examples and
-`scenario-player/scenario_player.py`'s module docstring for the full format description. Run
-numbers must be exactly six digits: the fake `edmFileUtil` parses `run<RUN6DIGIT>_ls<LS>` names
-and skips anything else.
+A scenario lists one or more runs with a start offset and a sequence of lumisections separated
+by delays; events from multiple runs merge into one global timeline. Runs may not overlap (only
+one CMS-wide DAQ run is active at once), but a run's `calibrations` list can share its
+lumisections across several calibrations at once -- see `scenario-player/scenario_player.py`'s
+module docstring for the full format and `scenario-player/scenarios/*.yaml` for worked examples.
+Run numbers must be exactly six digits: the fake `edmFileUtil` parses `run<RUN6DIGIT>_ls<LS>`
+names and skips anything else.
 
-This is the same engine-agnostic layer `seed.py` is (it calls `seed.py`'s functions directly and
-imports no orchestration engine), so any orchestrator pointed at the same `$NGT_DEV_HOME` reacts
-to the same scenario files unchanged.
+This calls `seed.py`'s functions directly, nothing more -- the same engine-agnostic layer
+`seed.py` itself is.
 
 ## Public Presentations
 

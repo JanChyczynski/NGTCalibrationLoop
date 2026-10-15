@@ -2,9 +2,8 @@
 """
 Plays back a scripted timeline of LHC runs/lumisections against the fake
 OMS/EOS state scenario-player/seed.py manages -- the "simulate a live run" half of the
-live-test setup, kept deliberately separate from whichever orchestration
-engine is watching it (airflow_automation/airflow_demo/airflow_demo.sh today; a future Prefect/Kestra/
-REANA adapter would need none of this file changed).
+live-test setup. It doesn't know or care what, if anything, is watching
+$NGT_DEV_HOME.
 
 A scenario file (YAML) describes one or more runs, each with a start offset
 and a sequence of lumisections separated by delays, e.g.:
@@ -42,7 +41,7 @@ Usage:
 prints the resolved timeline and exits without touching $NGT_DEV_HOME or
 sleeping, useful for validating a scenario file or wiring it into a
 non-interactive test. This script only calls scenario-player/seed.py's library functions
-(seed_run/add_ls/end_run) -- it has no Airflow (or any engine) import at all.
+(seed_run/add_ls/end_run) -- it has no orchestration-engine import at all.
 """
 import argparse
 import sys
@@ -95,12 +94,8 @@ def _run_interval(spec):
 
 
 def _check_no_overlapping_runs(scenario):
-    """A run is one CMS-wide DAQ run -- there is only ever one active across
-    the whole of CMS at a time, never two different run numbers at once
-    (unlike calibrations, which can all be watching the *same* run
-    concurrently -- see build_timeline's docstring). Reject a scenario that
-    schedules two different run numbers whose windows overlap, rather than
-    silently producing a physically nonsensical timeline."""
+    """Reject a scenario whose runs overlap in time -- a run is one
+    CMS-wide DAQ run, never two active at once (see module docstring)."""
     intervals = sorted(
         (*_run_interval(spec), spec["run"]) for spec in scenario.get("runs", [])
     )

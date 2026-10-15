@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 import NGTLoopStep3
+from conftest import _run_dir
 
 CALIBRATION = "EcalPedestals"
 WITNESS_SUFFIX = "ecalPedsStep2_job.txt"
@@ -22,10 +23,6 @@ ROOT_SUFFIX = "ecalPedsStep2.root"
 @pytest.fixture
 def loop(isolated_env):
     return NGTLoopStep3.NGTLoopStep3("Step3Test", CALIBRATION)
-
-
-def _run_dir(loop, run_number):
-    return Path(loop.pathWhereFilesAppear) / f"run{run_number}"
 
 
 def _seed_step2_output(run_dir, basename, create_root_file=True):

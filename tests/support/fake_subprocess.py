@@ -70,8 +70,7 @@ def make_fake_run(fake_eos, prefix="root://eoscms.cern.ch/"):
 
 class FakePopen:
     """Records subprocess.Popen launch attempts instead of actually spawning a
-    cmsDriver/cmsRun/uploadConditions.py job. Appends each call's (cmd, kwargs) to
-    the shared `calls` list passed at construction time."""
+    cmsDriver/cmsRun/uploadConditions.py job."""
 
     def __init__(self, calls):
         self.calls = calls
