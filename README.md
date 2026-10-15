@@ -236,6 +236,21 @@ tmux attach -t NGTDemo2_EcalPedestals                       # watch it react (Ct
 ./scenario-player/live_demo.sh stop-all EcalPedestals                   # tear down
 ```
 
+For a guided walkthrough of all of the above, drive those same tmux sessions with a
+scenario file instead of typing `seed-run`/`add-ls`/`end-run` by hand: `--interactive`
+waits for Enter before each step (printing the command it is about to run), and
+`--monitor` reports every file the loops produce as it appears -- so you confirm the next
+step once you have *seen* the previous one land, rather than guessing at a delay:
+```bash
+./scenario-player/live_demo.sh play scenario-player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
+./scenario-player/live_demo.sh stop-all EcalPedestals
+```
+That one command is enough from a cold start: `play` creates `$NGT_DEV_HOME` if it isn't
+there and launches Step 2/3/4 for the calibrations that scenario feeds (asking the player
+which those are), then passes everything after it straight to `scenario_player.py` -- see
+[Scripting a timed sequence of runs/lumisections](#scripting-a-timed-sequence-of-runslumisections)
+below for the scenario format and the rest of the flags.
+
 Run `./scenario-player/live_demo.sh` with no arguments for the full command list. All state
 lives under `$NGT_DEV_HOME` (default `./demo-env`, a gitignored directory inside
 this repo); `./scenario-player/live_demo.sh reset` deletes it, which resets the demo
@@ -276,7 +291,12 @@ python3 scenario-player/scenario_player.py scenario-player/scenarios/concurrent_
 python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --dry-run  # print the
                                                                                    # resolved
                                                                                    # timeline only
+python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
 ```
+
+`./scenario-player/live_demo.sh play <scenario.yaml> [options]` is the same thing with the
+venv activated, the scratch environment set up and the scenario's loops started for you --
+every argument after `play` is passed straight through.
 
 A scenario lists one or more runs with a start offset and a sequence of lumisections separated
 by delays; events from multiple runs merge into one global timeline. Runs may not overlap (only
@@ -285,6 +305,19 @@ lumisections across several calibrations at once -- see `scenario-player/scenari
 module docstring for the full format and `scenario-player/scenarios/*.yaml` for worked examples.
 Run numbers must be exactly six digits: the fake `edmFileUtil` parses `run<RUN6DIGIT>_ls<LS>`
 names and skips anything else.
+
+Two flags turn any scenario into a walkthrough you can present:
+
+| Flag            | Effect                                                                 |
+|-----------------|-------------------------------------------------------------------------|
+| `--interactive` | Wait for Enter before each scheduled instant instead of waiting out its delay, printing the `seed.py` command(s) it is about to run. The YAML's delays become documentation (so `--speed` is rejected alongside it), and events scheduled at the same offset -- one run feeding several calibrations -- share one keypress. |
+| `--monitor`     | Report every file/directory appearing under `$NGT_DEV_HOME/data` as the loops produce it, and keep watching after the last event until you press Enter -- Step 3/4 poll every `NGT_LOOP_SLEEP_SECONDS` and keep working well past the end of the scenario. |
+
+The player itself starts no loops -- `./scenario-player/live_demo.sh play` does that for you,
+and `setup` / `start-all <calibration>` are still there to drive by hand. `--monitor` reports
+*new* paths only, so a `demo-env` left over from an earlier scenario won't flood the output,
+and file *contents* are still yours to look at (`tail` a `stdout.log`, or
+`./scenario-player/live_demo.sh logs <calibration> 2`).
 
 This calls `seed.py`'s functions directly, nothing more -- the same engine-agnostic layer
 `seed.py` itself is.
