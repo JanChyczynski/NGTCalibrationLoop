@@ -21,16 +21,8 @@
 #   source scenario-player/sim_env.sh          -- sets REPO_DIR, NGT_DEV_HOME, and the
 #                                      sim_setup/sim_reset functions; doesn't
 #                                      execute anything on its own.
-#   ./scenario-player/sim_env.sh setup|reset   -- run directly instead. `reset` wipes
-#                                      $NGT_DEV_HOME (all simulator state --
-#                                      fake OMS runs, EOS files, output data,
-#                                      logs) independently of whatever's using
-#                                      it, no venv needed. `setup` recreates
-#                                      it, and DOES need a venv active first
-#                                      (see sim_setup below for why).
-#                                      Neither touches any engine's OWN state
-#                                      (if it has any) -- that needs its own
-#                                      separate reset.
+#   ./scenario-player/sim_env.sh setup|reset   -- run directly instead (see
+#                                      sim_setup/sim_reset below for what each does).
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"

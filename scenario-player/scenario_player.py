@@ -32,43 +32,10 @@ which is the physically sensible way to model "multiple calibrations
 processing concurrently" -- not two different run numbers overlapping in
 time. See scenario-player/scenarios/*.yaml for more worked examples.
 
-Usage:
-  python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml
-  python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --speed 5
-  python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --dry-run
-  python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --interactive
-  python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
-
---speed scales every delay (2 = twice as fast, 0.5 = half speed); --dry-run
-prints the resolved timeline and exits without touching $NGT_DEV_HOME or
-sleeping, useful for validating a scenario file or wiring it into a
-non-interactive test. --only-list-calibrations prints just the calibrations
-this scenario's events touch, one per line, and exits -- it ignores every
-other argument, so a caller can append it to a command line it already has.
-
---interactive replaces the clock with you: before each scheduled instant it
-prints the seed.py command(s) it is about to run and waits for Enter (Ctrl-C to
-stop there), so a walkthrough goes at the pace of whoever is watching. Every
-event scheduled for the same offset shares one keypress -- a run feeding three
-calibrations is one step, not three. Offsets are still printed, just not
-honored, so --speed is rejected alongside it and any scenario file works as a
-walkthrough regardless of the delays it was written with. Nothing here starts
-the loops being watched -- scenario-player/live_demo.sh's `play` does that for
-you (and sets the scratch environment up), or run its `setup` and
-`start-all <calibration>` by hand.
-
---monitor reports every file and directory appearing under $NGT_DEV_HOME/data
--- i.e. whatever the loops under test are producing, none of which this script
-writes -- every couple of seconds while the scenario plays, and then keeps the
-process alive after the last event until you press Enter, because Step 2/3/4
-keep working long after the scenario itself is over. Together the two flags make
-a run safe to drive by hand: you wait for runEnd.log/allStep3FilesProcessed.log
-to actually appear before confirming the next step, rather than for a timer to
-guess.
-
 This script only calls scenario-player/seed.py's library functions
 (seed_run/add_ls/end_run) -- it has no orchestration-engine import at all.
 """
+# see def parse_args below to see available commands
 import argparse
 import itertools
 import os
@@ -86,6 +53,66 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import seed  # noqa: E402  -- scenario-player/seed.py, reused as a library (engine-agnostic)
 
 MONITOR_INTERVAL_SECONDS = 2.0  # fast enough to feel live, slow enough to stay quiet
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("scenario", type=Path, help="path to a scenario YAML file")
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=None,
+        help="playback speed multiplier -- 2 = twice as fast, 0.5 = half speed "
+             "(default: 1.0; not usable with --interactive)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the resolved timeline and exit; touches nothing (useful for validating a "
+             "scenario file or wiring it into a non-interactive test)",
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="wait for Enter before each scheduled instant (printing the seed.py command(s) about "
+             "to run) instead of waiting out its delay; does not start the loops being watched -- "
+             "see live_demo.sh's `play`",
+    )
+    parser.add_argument(
+        "--monitor",
+        action="store_true",
+        help="report files appearing under $NGT_DEV_HOME/data while the scenario plays (what Step "
+             "2/3/4 produce in reaction, not this script), and keep watching after the last event "
+             "until you press Enter; combined with --interactive, lets you confirm each step once "
+             "its real output has appeared instead of guessing",
+    )
+    parser.add_argument(
+        "--only-list-calibrations",
+        action="store_true",
+        help="ignore every other argument: print the calibrations this scenario's events "
+             "touch, one per line, and exit (what live_demo.sh's `play` uses to know which "
+             "loops to start)",
+    )
+    args = parser.parse_args()
+
+    if not args.only_list_calibrations:
+        # Checked before the scenario file is read, so a contradictory command line fails
+        # the same way whether or not the path exists.
+        if args.interactive and args.dry_run:
+            parser.error(
+                "--interactive and --dry-run are mutually exclusive: --dry-run only prints the resolved "
+                "timeline, there is nothing to confirm"
+            )
+        if args.interactive and args.speed is not None:
+            parser.error("--speed has no meaning with --interactive: nothing is timed, every step waits for you")
+        if args.monitor and args.dry_run:
+            parser.error(
+                "--monitor has no meaning with --dry-run: nothing is fired, so nothing will appear under "
+                f"{seed.NGT_DEV_HOME / 'data'}"
+            )
+        if args.speed is not None and args.speed <= 0:
+            parser.error(f"--speed must be positive, got {args.speed}")
+    return args
 
 
 def _emit(message):
@@ -355,36 +382,7 @@ class DataDirMonitor:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("scenario", type=Path, help="path to a scenario YAML file")
-    parser.add_argument(
-        "--speed",
-        type=float,
-        default=None,
-        help="playback speed multiplier (default: 1.0; not usable with --interactive)",
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="print the resolved timeline and exit; touches nothing"
-    )
-    parser.add_argument(
-        "--interactive",
-        action="store_true",
-        help="wait for Enter before each scheduled instant instead of waiting out its delay",
-    )
-    parser.add_argument(
-        "--monitor",
-        action="store_true",
-        help="report files appearing under $NGT_DEV_HOME/data while the scenario plays, and keep "
-             "watching after the last event until you press Enter",
-    )
-    parser.add_argument(
-        "--only-list-calibrations",
-        action="store_true",
-        help="ignore every other argument: print the calibrations this scenario's events "
-             "touch, one per line, and exit (what live_demo.sh's `play` uses to know which "
-             "loops to start)",
-    )
-    args = parser.parse_args()
+    args = parse_args()
 
     if args.only_list_calibrations:
         # "only" is the contract: every other flag is ignored rather than rejected, so
@@ -398,23 +396,7 @@ def main():
             _emit(calibration)
         return None
 
-    # Checked before the scenario file is read, so a contradictory command line fails the
-    # same way whether or not the path exists.
-    if args.interactive and args.dry_run:
-        parser.error(
-            "--interactive and --dry-run are mutually exclusive: --dry-run only prints the resolved "
-            "timeline, there is nothing to confirm"
-        )
-    if args.interactive and args.speed is not None:
-        parser.error("--speed has no meaning with --interactive: nothing is timed, every step waits for you")
-    if args.monitor and args.dry_run:
-        parser.error(
-            "--monitor has no meaning with --dry-run: nothing is fired, so nothing will appear under "
-            f"{seed.NGT_DEV_HOME / 'data'}"
-        )
     speed = 1.0 if args.speed is None else args.speed
-    if speed <= 0:
-        parser.error(f"--speed must be positive, got {speed}")
 
     events = build_timeline(_load_scenario(args.scenario))
     if not events:

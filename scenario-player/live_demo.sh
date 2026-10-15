@@ -8,7 +8,7 @@
 # README.md's "Running the FSM logic locally / tests" section.
 #
 # Usage:
-# See README.md or usage function below
+# See README.md or usage function below 
 #
 # $NGT_DEV_HOME (default ./demo-env, i.e. a gitignored directory inside this repo)
 # holds all scratch state -- delete it any time to reset the demo environment.
@@ -186,11 +186,8 @@ cmd_play() {
     echo
   fi
 
-  # Ask the player which calibrations the scenario feeds. --only-list-calibrations
-  # ignores every other argument, so the command line goes through verbatim with the
-  # flag appended -- this script never parses a scenario file, or needs to know which
-  # argument is one. A bad command line or a bad scenario fails right here, under
-  # set -e and with the player's own message, before any session is started.
+  # Get the scenario's calibrations with --only-list-calibrations (ignores other args)
+  # then start all these calibrations.
   local calibrations
   calibrations="$(python3 "$PLAYER" "$@" --only-list-calibrations)"
   while read -r calibration; do
