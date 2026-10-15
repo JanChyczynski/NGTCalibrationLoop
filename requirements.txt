@@ -7,4 +7,9 @@
 # substitutes tests/stubs/omsapi instead).
 transitions==0.9.3
 PyYAML==6.0.3
-requests>=2.32.5,==2.34.2;python_version>="3.10"
+# requests' own minimum supported Python version keeps climbing release over
+# release (2.32.4 was the last to support 3.8; 2.32.5 needs >=3.9; 2.34.2
+# needs >=3.10) -- split the pin so older interpreters still get a supported
+# release instead of failing to install the >=3.10-only one.
+requests==2.32.4;python_version<"3.10"
+requests==2.34.2;python_version>="3.10"
