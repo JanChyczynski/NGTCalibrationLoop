@@ -11,13 +11,14 @@ import json
 import logging
 import os
 import subprocess
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
 from transitions import Machine, State
+
+from ngt_loop_config import (_load_calibration_config, _load_ngt_parameters,
+                             _setup_logging)
 
 os.umask(0o002)
 
@@ -32,28 +33,6 @@ parser.add_argument(
     required=True,
     choices=["SiStripBad", "EcalPedestals", "BeamSpot"],
 )
-
-
-def _load_ngt_parameters():
-    """Load ngtParameters.jsn, honoring the NGT_PARAMETERS_PATH override used by tests."""
-    parameters_path = os.environ.get(
-        "NGT_PARAMETERS_PATH", os.path.join(os.getcwd(), "ngtParameters.jsn")
-    )
-    with open(parameters_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _load_calibration_config(calibration_name):
-    """Load a calibration workflow YAML, honoring the NGT_CALIBRATION_YAML_DIR
-    override used by tests."""
-    calibration_yaml_dir = os.environ.get(
-        "NGT_CALIBRATION_YAML_DIR", os.path.join(os.getcwd(), "calibrationYAML")
-    )
-    calibration_config_path = os.path.join(
-        calibration_yaml_dir, f"{calibration_name}.yaml"
-    )
-    with open(calibration_config_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 
 class NGTLoopStep4:
@@ -631,82 +610,11 @@ uploadConditions.py {final_db_name}
         )
 
 
-def _setup_logging(calibration_name):
-    """Set up the split-by-level log files for a run of Step 4.
-
-    Honors DATA_BASE_PATH/LOG_BASE_PATH overrides in ngtParameters.jsn so
-    tests can redirect logging away from /tmp/ngt.
-    """
-    config = _load_ngt_parameters()
-    log_base_path = config.get("LOG_BASE_PATH", "/tmp/ngt")
-
-    # Create the log dir if it doesn't exist, so we can write the log file
-    log_dir = Path(log_base_path) / calibration_name
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    # Get the main logger
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)  # Capture everything at logger level
-
-    # Create formatter
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-    )
-
-    # 1. ALL MESSAGES - Complete history
-    all_handler = logging.FileHandler(log_dir / "NGTLoopStep4_ALL.log")
-    all_handler.setLevel(logging.DEBUG)
-    all_handler.setFormatter(formatter)
-    logger.addHandler(all_handler)
-
-    # 2. INFO ONLY
-    info_handler = logging.FileHandler(log_dir / "NGTLoopStep4_INFO.log")
-    info_handler.setLevel(logging.INFO)
-    info_handler.addFilter(lambda record: record.levelno == logging.INFO)  # ONLY info
-    info_handler.setFormatter(formatter)
-    logger.addHandler(info_handler)
-
-    # 3. WARNING ONLY
-    warning_handler = logging.FileHandler(log_dir / "NGTLoopStep4_WARNING.log")
-    warning_handler.setLevel(logging.WARNING)
-    warning_handler.addFilter(
-        lambda record: record.levelno == logging.WARNING
-    )  # ONLY warnings
-    warning_handler.setFormatter(formatter)
-    logger.addHandler(warning_handler)
-
-    # 4. ERROR ONLY
-    error_handler = logging.FileHandler(log_dir / "NGTLoopStep4_ERROR.log")
-    error_handler.setLevel(logging.ERROR)
-    error_handler.addFilter(lambda record: record.levelno == logging.ERROR)  # ONLY errors
-    error_handler.setFormatter(formatter)
-    logger.addHandler(error_handler)
-
-    # 5. CRITICAL ONLY
-    critical_handler = logging.FileHandler(log_dir / "NGTLoopStep4_CRITICAL.log")
-    critical_handler.setLevel(logging.CRITICAL)
-    critical_handler.addFilter(
-        lambda record: record.levelno == logging.CRITICAL
-    )  # ONLY critical
-    critical_handler.setFormatter(formatter)
-    logger.addHandler(critical_handler)
-
-    # 6. Screen output (stderr) - warnings and above
-    stream_handler = logging.StreamHandler(sys.stderr)
-    stream_handler.setLevel(logging.WARNING)
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-
-    # Optional: Add a simple startup message to verify logging is working
-    logging.info("Logging initialized - writing to split log files")
-    logging.warning("Warning-level logging active")
-
-
 def main():
     """Parse CLI args, set up logging, and run the Step 4 FSM loop forever."""
     cli_args = parser.parse_args()
 
-    _setup_logging(cli_args.calibration)
+    _setup_logging("NGTLoopStep4", cli_args.calibration)
 
     loop = NGTLoopStep4("Step4", cli_args.calibration)
 
