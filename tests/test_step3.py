@@ -63,25 +63,21 @@ def test_finds_new_run_directory(loop):
     assert Path(loop.workingDir) == run_dir
 
 
-def test_reads_run_start_time_from_runstart_log(loop):
+@pytest.mark.parametrize("has_runstart_log", [True, False])
+def test_run_start_time_from_log_or_default(loop, has_runstart_log):
     run_dir = _run_dir(loop, 398600)
     run_dir.mkdir(parents=True)
-    start_time = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=30)
-    (run_dir / "runStart.log").write_text(start_time.isoformat(), encoding="utf-8")
-
-    loop.TryLookForRun()
-
-    assert loop.startTime == start_time
-
-
-def test_defaults_start_time_to_now_without_runstart_log(loop):
-    run_dir = _run_dir(loop, 398600)
-    run_dir.mkdir(parents=True)
+    if has_runstart_log:
+        start_time = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=30)
+        (run_dir / "runStart.log").write_text(start_time.isoformat(), encoding="utf-8")
     before = datetime.now(timezone.utc)
 
     loop.TryLookForRun()
 
-    assert before <= loop.startTime <= datetime.now(timezone.utc)
+    if has_runstart_log:
+        assert loop.startTime == start_time
+    else:
+        assert before <= loop.startTime <= datetime.now(timezone.utc)
 
 
 def test_ignores_already_processed_runs(loop):
@@ -94,6 +90,7 @@ def test_ignores_already_processed_runs(loop):
     assert loop.state == "NotRunning"
 
 
+# Note: will become redundant with automatic validation of scenarios
 def test_picks_earliest_of_several_new_runs(loop):
     _run_dir(loop, 398700).mkdir(parents=True)
     _run_dir(loop, 398600).mkdir(parents=True)
@@ -134,6 +131,7 @@ def test_enough_new_files_moves_to_preparing_files(loop):
     assert loop.state == "PreparingFiles"
 
 
+# Note: will become redundant with automatic validation of scenarios
 def test_no_new_files_run_ongoing_time_left_stays_waiting(loop):
     run_dir = _run_dir(loop, 398600)
     run_dir.mkdir(parents=True)
@@ -221,20 +219,7 @@ def test_prepare_and_launch_alcaprompt_job_full_cycle(loop, popen_calls):
     loop.ContinueAfterCleanup()
     assert loop.state == "WaitingForStep2Files"  # not final -> keep watching this run
 
-
-def test_second_alcaprompt_job_gets_next_job_number(loop, popen_calls):
-    run_dir = _run_dir(loop, 398600)
-    run_dir.mkdir(parents=True)
-    loop.TryLookForRun()
-    _seed_step2_output(run_dir, "run398600_LS0051To0051")
-
-    loop.TryProcessFiles()
-    loop.ContinueAfterCheckFiles()
-    loop.TryPrepareALCAPROMPTJobs()
-    loop.TryLaunchALCAPROMPTJobs()
-    loop.ContinueToCleanup()
-    loop.ContinueAfterCleanup()
-
+    # A second batch of Step 2 output for the same run gets the next job number.
     _seed_step2_output(run_dir, "run398600_LS0052To0052")
     loop.TryProcessFiles()
     loop.ContinueAfterCheckFiles()

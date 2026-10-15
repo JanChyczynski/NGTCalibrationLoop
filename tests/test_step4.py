@@ -162,6 +162,7 @@ def test_no_new_files_run_ended_moves_to_final(loop):
     assert loop.preparedFinalFiles is True
 
 
+# Note: will become redundant with automatic validation of scenarios
 def test_no_new_files_run_ongoing_time_left_stays_waiting(loop):
     run_dir = _run_dir(loop, 398600)
     run_dir.mkdir(parents=True)
@@ -219,6 +220,16 @@ def test_prepare_and_launch_harvesting_job_writes_metadata_and_script(loop, pope
     assert popen_calls[0]["cmd"] == ["bash", "HARVESTING.sh"]
     assert popen_calls[0]["kwargs"]["cwd"] == loop.jobDir
 
+    # A second batch of Step 3 output for the same run gets the next job number.
+    loop.ContinueToCleanup()
+    loop.ContinueAfterCleanup()
+    _seed_step3_job_output(run_dir, "alcaPromptJob001")
+    loop.TryProcessFiles()
+    loop.ContinueAfterCheckFiles()
+    loop.TryPrepareHarvestingJobs()
+
+    assert Path(loop.jobDir) == run_dir / "harvestJob001"
+
 
 def test_beamspot_metadata_has_no_since(isolated_env, popen_calls):
     loop = NGTLoopStep4.NGTLoopStep4("Step4Test", "BeamSpot")
@@ -251,27 +262,6 @@ def test_no_launch_when_nothing_to_process(loop, popen_calls):
 
     assert popen_calls == []
     assert loop.jobDir == "/dev/null"
-
-
-def test_second_harvesting_job_gets_next_job_number(loop, popen_calls):
-    run_dir = _run_dir(loop, 398600)
-    run_dir.mkdir(parents=True)
-    loop.TryLookForRun()
-    _seed_step3_job_output(run_dir, "alcaPromptJob000")
-
-    loop.TryProcessFiles()
-    loop.ContinueAfterCheckFiles()
-    loop.TryPrepareHarvestingJobs()
-    loop.TryLaunchHarvestingJobs()
-    loop.ContinueToCleanup()
-    loop.ContinueAfterCleanup()
-
-    _seed_step3_job_output(run_dir, "alcaPromptJob001")
-    loop.TryProcessFiles()
-    loop.ContinueAfterCheckFiles()
-    loop.TryPrepareHarvestingJobs()
-
-    assert Path(loop.jobDir) == run_dir / "harvestJob001"
 
 
 def test_cleanup_writes_summary_log_and_marks_run_processed_when_final(loop, popen_calls):

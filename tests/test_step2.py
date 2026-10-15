@@ -77,6 +77,7 @@ def test_skips_run_that_already_has_a_working_dir(loop):
     assert loop.state == "NotRunning"
 
 
+# Note: will become redundant with automatic validation of scenarios
 def test_skips_ended_run_below_min_ls_threshold(loop):
     now = datetime.now(timezone.utc)
     omsapi.configure_runs(
@@ -88,6 +89,7 @@ def test_skips_ended_run_below_min_ls_threshold(loop):
     assert loop.state == "NotRunning"
 
 
+# Note: will become redundant with automatic validation of scenarios
 def test_latches_onto_ended_run_with_enough_ls(loop):
     now = datetime.now(timezone.utc)
     omsapi.configure_runs(
@@ -100,6 +102,7 @@ def test_latches_onto_ended_run_with_enough_ls(loop):
     assert loop.runNumber == 398602
 
 
+# Note: will become redundant with automatic validation of scenarios
 def test_picks_earliest_of_several_eligible_runs(loop):
     now = datetime.now(timezone.utc)
     omsapi.configure_runs(
@@ -171,24 +174,24 @@ def test_broken_eos_files_are_skipped(loop, fake_eos):
     assert loop.waitingLS is False
 
 
-def test_no_new_files_and_still_time_stays_waiting(loop, fake_eos):
+@pytest.mark.parametrize(
+    "n_files, expected_state",
+    [
+        # Note: this case will become redundant with automatic validation of scenarios
+        pytest.param(0, "WaitingForLS", id="no_new_files"),
+        pytest.param(1, "PreparingLS", id="enough_new_files"),
+    ],
+)
+def test_continue_after_check_ls_decides_whether_to_proceed(loop, fake_eos, n_files, expected_state):
     _latch_live_run(loop, 398600)
+    if n_files:
+        directory = loop.pathWhereFilesAppear
+        fake_eos.add_file(f"{directory}/run398600_ls0051.root", run_number=398600, ls_numbers=[51])
 
     loop.TryProcessLS()
     loop.ContinueAfterCheckLS()
 
-    assert loop.state == "WaitingForLS"
-
-
-def test_enough_new_files_moves_to_preparing_ls(loop, fake_eos):
-    _latch_live_run(loop, 398600)
-    directory = loop.pathWhereFilesAppear
-    fake_eos.add_file(f"{directory}/run398600_ls0051.root", run_number=398600, ls_numbers=[51])
-
-    loop.TryProcessLS()
-    loop.ContinueAfterCheckLS()
-
-    assert loop.state == "PreparingLS"
+    assert loop.state == expected_state
 
 
 # --- maxLatchTime / run-ended escape hatches ---------------------------------------
