@@ -42,7 +42,9 @@ Usage:
 --speed scales every delay (2 = twice as fast, 0.5 = half speed); --dry-run
 prints the resolved timeline and exits without touching $NGT_DEV_HOME or
 sleeping, useful for validating a scenario file or wiring it into a
-non-interactive test.
+non-interactive test. --only-list-calibrations prints just the calibrations
+this scenario's events touch, one per line, and exits -- it ignores every
+other argument, so a caller can append it to a command line it already has.
 
 --interactive replaces the clock with you: before each scheduled instant it
 prints the seed.py command(s) it is about to run and waits for Enter (Ctrl-C to
@@ -51,8 +53,9 @@ event scheduled for the same offset shares one keypress -- a run feeding three
 calibrations is one step, not three. Offsets are still printed, just not
 honored, so --speed is rejected alongside it and any scenario file works as a
 walkthrough regardless of the delays it was written with. Nothing here starts
-the loops being watched -- pair it with scenario-player/live_demo.sh's `setup`
-and `start-all <calibration>`.
+the loops being watched -- scenario-player/live_demo.sh's `play` does that for
+you (and sets the scratch environment up), or run its `setup` and
+`start-all <calibration>` by hand.
 
 --monitor reports every file and directory appearing under $NGT_DEV_HOME/data
 -- i.e. whatever the loops under test are producing, none of which this script
@@ -94,6 +97,11 @@ def _emit(message):
     """
     sys.stdout.write(message + "\n")
     sys.stdout.flush()
+
+
+def _load_scenario(path):
+    """The one way this script reads a scenario file."""
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 @dataclass
@@ -369,7 +377,26 @@ def main():
         help="report files appearing under $NGT_DEV_HOME/data while the scenario plays, and keep "
              "watching after the last event until you press Enter",
     )
+    parser.add_argument(
+        "--only-list-calibrations",
+        action="store_true",
+        help="ignore every other argument: print the calibrations this scenario's events "
+             "touch, one per line, and exit (what live_demo.sh's `play` uses to know which "
+             "loops to start)",
+    )
     args = parser.parse_args()
+
+    if args.only_list_calibrations:
+        # "only" is the contract: every other flag is ignored rather than rejected, so
+        # whatever drives this script can append this one to a command line it already
+        # has instead of picking the scenario path out of it. One name per line and
+        # nothing else on stdout -- an empty scenario prints nothing at all, rather than
+        # prose a caller looping over the output would take for a calibration name.
+        # build_timeline still runs, so a malformed scenario fails here, before whoever
+        # asked has started anything.
+        for calibration in sorted({e.calibration for e in build_timeline(_load_scenario(args.scenario))}):
+            _emit(calibration)
+        return None
 
     # Checked before the scenario file is read, so a contradictory command line fails the
     # same way whether or not the path exists.
@@ -389,8 +416,7 @@ def main():
     if speed <= 0:
         parser.error(f"--speed must be positive, got {speed}")
 
-    scenario = yaml.safe_load(args.scenario.read_text(encoding="utf-8"))
-    events = build_timeline(scenario)
+    events = build_timeline(_load_scenario(args.scenario))
     if not events:
         _emit("(scenario has no runs -- nothing to play)")
         return None

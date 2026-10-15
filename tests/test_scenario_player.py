@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_PLAYER_DIR = REPO_ROOT / "scenario-player"
@@ -326,6 +327,73 @@ def test_main_rejects_contradictory_flag_combinations(monkeypatch, capsys, flags
     assert expected_error in capsys.readouterr().err
 
 
+def _write_scenario(tmp_path, scenario):
+    """A scenario file on disk -- main() takes a path, not a parsed dict."""
+    path = tmp_path / "scenario.yaml"
+    path.write_text(yaml.safe_dump(scenario, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def test_only_list_calibrations_prints_the_sorted_union_one_per_line(monkeypatch, capsys, tmp_path):
+    calls = _record_seed_calls(monkeypatch)
+    scenario = _write_scenario(
+        tmp_path,
+        {
+            "runs": [
+                {"calibrations": ["BeamSpot", "EcalPedestals"], "run": 1, "end_after": 10},
+                {"calibrations": ["EcalPedestals"], "run": 2, "start_offset": 20, "end_after": 5},
+            ]
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["scenario_player.py", str(scenario), "--only-list-calibrations"])
+
+    assert scenario_player.main() is None
+
+    # Sorted, deduplicated across runs, one name per line and nothing else on stdout:
+    # live_demo.sh loops over this output.
+    assert capsys.readouterr().out.splitlines() == ["BeamSpot", "EcalPedestals"]
+    assert calls == []  # listing is not playing -- it must never fire an event
+
+
+def test_only_list_calibrations_prints_nothing_for_a_scenario_with_no_runs(monkeypatch, capsys, tmp_path):
+    scenario = _write_scenario(tmp_path, {"runs": []})
+    monkeypatch.setattr(sys, "argv", ["scenario_player.py", str(scenario), "--only-list-calibrations"])
+
+    assert scenario_player.main() is None
+    # Not even the "(scenario has no runs -- nothing to play)" message that plain
+    # playback prints: a caller looping over this output would take that line for a
+    # calibration name.
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    "ignored_flags",
+    [
+        ["--interactive", "--dry-run"],
+        ["--interactive", "--speed", "5"],
+        ["--monitor", "--dry-run"],
+        ["--speed", "0"],
+    ],
+)
+def test_only_list_calibrations_ignores_every_other_flag(monkeypatch, capsys, tmp_path, ignored_flags):
+    # Each of these is a usage error when playing (see the test above) -- alongside
+    # --only-list-calibrations they are simply ignored, which is what lets live_demo.sh
+    # append the flag to a command line it already has instead of working out which
+    # argument is the scenario path. Also pins that the flag is handled *above* main()'s
+    # validation block: move it below and every case here raises SystemExit.
+    calls = _record_seed_calls(monkeypatch)
+    scenario = _write_scenario(
+        tmp_path, {"runs": [{"calibrations": ["SiStripBad"], "run": 1, "end_after": 1}]}
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["scenario_player.py", str(scenario), *ignored_flags, "--only-list-calibrations"]
+    )
+
+    assert scenario_player.main() is None
+    assert capsys.readouterr().out.splitlines() == ["SiStripBad"]
+    assert calls == []
+
+
 def _monitor(tmp_path, **kwargs):
     """A DataDirMonitor over a scratch $NGT_DEV_HOME/data, plus the list it logs into.
     Constructing it baselines whatever the test created beforehand."""
@@ -415,8 +483,6 @@ def test_monitor_stop_reports_what_appeared_during_the_last_interval(tmp_path):
 
 
 def test_scenario_files_in_repo_parse_and_build_a_nonempty_timeline():
-    import yaml
-
     scenarios_dir = SCENARIO_PLAYER_DIR / "scenarios"
     yaml_files = list(scenarios_dir.glob("*.yaml"))
     assert yaml_files, "expected at least one example scenario under scenario-player/scenarios/"

@@ -22,6 +22,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
 CALIBRATIONS=(SiStripBad EcalPedestals BeamSpot)
+PLAYER="$REPO_DIR/scenario-player/scenario_player.py"
 
 usage() {
   cat <<USAGE
@@ -50,10 +51,12 @@ Driving a fake run (edits \$NGT_DEV_HOME/oms_runs.json + drops fake RAW files):
   end-run <run>                          Mark the run as ended in the fake OMS
   list-runs                              Show all runs currently seeded
   play <scenario.yaml> [options]         Play a whole timeline from a scenario file instead
-                                          of firing the three verbs above by hand; every
-                                          argument is passed straight to scenario_player.py
-                                          (--interactive, --monitor, --speed, --dry-run --
-                                          run it with --help for the full list)
+                                          of firing the three verbs above by hand. Sets up
+                                          \$NGT_DEV_HOME if it isn't there and starts Step
+                                          2/3/4 for the calibrations that scenario feeds,
+                                          then passes every argument straight to
+                                          scenario_player.py (--interactive, --monitor,
+                                          --speed, --dry-run -- run it with --help)
 
 calibration is one of: ${CALIBRATIONS[*]}
 USAGE
@@ -143,6 +146,13 @@ start_step() {
   echo "Started $session (tmux attach -t $session, Ctrl-b d to detach; console log: $console_log)"
 }
 
+cmd_start_all() {
+  local calibration="$1"
+  start_step 2 "$calibration"
+  start_step 3 "$calibration"
+  start_step 4 "$calibration"
+}
+
 cmd_status() {
   tmux list-sessions 2>/dev/null | grep '^NGTDemo' || echo "(no NGTDemo* tmux sessions running)"
 }
@@ -167,17 +177,38 @@ cmd_stop_all() {
   done
 }
 
+cmd_play() {
+  activate_venv
+
+  if [ ! -f "$NGT_DEV_HOME/ngtParameters.jsn" ]; then
+    echo "(no scratch environment at $NGT_DEV_HOME yet -- setting one up first)"
+    cmd_setup
+    echo
+  fi
+
+  # Ask the player which calibrations the scenario feeds. --only-list-calibrations
+  # ignores every other argument, so the command line goes through verbatim with the
+  # flag appended -- this script never parses a scenario file, or needs to know which
+  # argument is one. A bad command line or a bad scenario fails right here, under
+  # set -e and with the player's own message, before any session is started.
+  local calibrations
+  calibrations="$(python3 "$PLAYER" "$@" --only-list-calibrations)"
+  while read -r calibration; do
+    [ -n "$calibration" ] || continue
+    cmd_start_all "$calibration"
+  done <<<"$calibrations"
+  echo
+
+  python3 "$PLAYER" "$@"
+}
+
 case "${1:-}" in
   setup) cmd_setup ;;
   reset) cmd_reset ;;
   start2) start_step 2 "${2:?calibration required}" ;;
   start3) start_step 3 "${2:?calibration required}" ;;
   start4) start_step 4 "${2:?calibration required}" ;;
-  start-all)
-    start_step 2 "${2:?calibration required}"
-    start_step 3 "$2"
-    start_step 4 "$2"
-    ;;
+  start-all) cmd_start_all "${2:?calibration required}" ;;
   stop-all) cmd_stop_all "${2:?calibration required}" ;;
   status) cmd_status ;;
   logs) cmd_logs "${2:?calibration required}" "${3:?2, 3 or 4 required}" ;;
@@ -199,12 +230,11 @@ case "${1:-}" in
     python3 "$REPO_DIR/scenario-player/seed.py" list-runs
     ;;
   play)
-    # Everything after `play` goes to scenario_player.py untouched -- this verb is here to
-    # activate the venv and know where the script lives, not to re-parse its flags. The
-    # scenario path is resolved relative to your CWD, exactly as if you'd run it directly.
+    # Everything after `play` goes to scenario_player.py untouched -- this verb never
+    # re-parses its flags. The scenario path is resolved relative to your CWD, exactly
+    # as if you'd run the player directly.
     shift
-    activate_venv
-    python3 "$REPO_DIR/scenario-player/scenario_player.py" "$@"
+    cmd_play "$@"
     ;;
   *) usage; exit 1 ;;
 esac
