@@ -288,7 +288,7 @@ class NGTLoopStep3:
             f.write(
                 f"""#!/bin/bash -ex
 
-export $SCRAM_ARCH={self.scramArch}
+export SCRAM_ARCH={self.scramArch}
 cd {self.workingDir}/{self.cmsswVersion}/src
 cmsenv
 cd -
@@ -412,7 +412,7 @@ rm ALCAOUTPUT.sh
         logging.info("Machine reset!")
         self.runNumber = 0
         self.startTime = 0
-        self.timeoutInSeconds = 9 * 60 * 60  # 8 hours
+        self.timeoutInSeconds = 9 * 60 * 60  # 9 hours
         self.minimumFiles = 1
         self.maximumFiles = 5
         self.requestMinimumFiles = True
