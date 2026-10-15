@@ -257,15 +257,18 @@ class NGTLoopStep2:
 
         # Sort by run number and get the top 50
         q.sort("run_number", asc=False).paginate(page=1, per_page=50)
-        query_response = q.data()
 
         try:
+            query_response = q.data()
             query_response.raise_for_status()
             response = query_response.json()
         except requests.exceptions.JSONDecodeError as e:
             logging.error(f"Failed to fetch JSON from OMS API: {e}")
             logging.error(f"Status Code: {query_response.status_code}")
             logging.error(f"Query response text: {query_response.text}")
+            return False
+        except Exception as e:
+            logging.error(f"Error querying OMS API: {e}")
             return False
 
         if "data" not in response or not response["data"]:
@@ -576,7 +579,7 @@ class NGTLoopStep2:
             f.write(
                 f"""#!/bin/bash -ex
 
-export $SCRAM_ARCH={self.scramArch}
+export SCRAM_ARCH={self.scramArch}
 cmsrel {self.cmsswVersion}
 cd {self.cmsswVersion}/src
 cmsenv

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import omsapi
 import pytest
+import requests
 
 import NGTLoopStep2
 
@@ -112,6 +113,36 @@ def test_picks_earliest_of_several_eligible_runs(loop):
     loop.TryStartRun()
 
     assert loop.runNumber == 398605  # earliest recent run, not the first in the list
+
+
+def test_new_run_available_returns_false_when_oms_unreachable(loop):
+    """The OMS host being unreachable makes q.data() itself raise, so the guard in
+    NewRunAvailable must wrap the q.data() call, not only the response parsing."""
+    omsapi.set_failure(True)
+
+    assert loop.NewRunAvailable() is False
+    assert loop.state == "NotRunning"
+
+
+def test_new_run_available_returns_false_on_http_error(loop, monkeypatch):
+    """OMS answers, but with a 5xx: raise_for_status() raises."""
+    monkeypatch.setattr(omsapi._Query, "data", lambda self: omsapi._Response({}, status_code=500))
+
+    assert loop.NewRunAvailable() is False
+    assert loop.state == "NotRunning"
+
+
+def test_new_run_available_returns_false_on_non_json_body(loop, monkeypatch):
+    """OMS answers 200 but with a body that isn't JSON (e.g. an HTML proxy page)."""
+
+    class NotJsonResponse(omsapi._Response):
+        def json(self):
+            raise requests.exceptions.JSONDecodeError("Expecting value", "<html>", 0)
+
+    monkeypatch.setattr(omsapi._Query, "data", lambda self: NotJsonResponse({}))
+
+    assert loop.NewRunAvailable() is False
+    assert loop.state == "NotRunning"
 
 
 def test_daq_is_running_returns_false_on_oms_outage(loop):

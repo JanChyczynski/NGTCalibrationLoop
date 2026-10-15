@@ -158,7 +158,7 @@ def test_no_new_files_timeout_expired_moves_to_final_even_if_run_ongoing(loop):
     run_dir = _run_dir(loop, 398600)
     run_dir.mkdir(parents=True)
     loop.TryLookForRun()
-    loop.startTime = datetime.now(timezone.utc) - timedelta(hours=10)  # > timeoutInSeconds (9h)
+    loop.startTime = datetime.now(timezone.utc) - timedelta(hours=10)  # > timeoutInSeconds (8h)
 
     loop.TryProcessFiles()
     loop.ContinueAfterCheckFiles()
