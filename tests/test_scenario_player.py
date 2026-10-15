@@ -18,6 +18,17 @@ if str(SCENARIO_PLAYER_DIR) not in sys.path:
 import scenario_player  # noqa: E402
 
 
+def _record_seed_calls(monkeypatch):
+    """Replace scenario-player/seed.py's three entry points with recorders; returns the
+    list they append to, so a test can assert purely on what would have been called."""
+    calls = []
+    for name in ("seed_run", "add_ls", "end_run"):
+        monkeypatch.setattr(
+            scenario_player.seed, name, lambda *a, _name=name, **kw: calls.append((_name, a, kw))
+        )
+    return calls
+
+
 def test_build_timeline_single_run_orders_events_by_cumulative_delay():
     scenario = {
         "runs": [
@@ -118,16 +129,13 @@ def test_build_timeline_empty_scenario_returns_no_events():
 
 
 def test_dry_run_prints_timeline_without_firing_events(monkeypatch):
-    calls = []
-    monkeypatch.setattr(scenario_player.seed, "seed_run", lambda *a, **kw: calls.append(("seed_run", a, kw)))
-    monkeypatch.setattr(scenario_player.seed, "add_ls", lambda *a, **kw: calls.append(("add_ls", a, kw)))
-    monkeypatch.setattr(scenario_player.seed, "end_run", lambda *a, **kw: calls.append(("end_run", a, kw)))
+    calls = _record_seed_calls(monkeypatch)
 
     events = scenario_player.build_timeline(
         {"runs": [{"calibrations": ["BeamSpot"], "run": 7, "lumisections": [{"ls": 1, "after": 0}], "end_after": 1}]}
     )
     lines = []
-    scenario_player.play(events, dry_run=True, log=lines.append)
+    scenario_player.show_timeline(events, log=lines.append)
 
     assert calls == []  # dry-run must not touch the fake OMS/EOS state at all
     assert len(lines) == len(events) == 3
@@ -137,10 +145,7 @@ def test_dry_run_prints_timeline_without_firing_events(monkeypatch):
 
 
 def test_play_fires_events_in_order_with_expected_arguments(monkeypatch):
-    calls = []
-    monkeypatch.setattr(scenario_player.seed, "seed_run", lambda *a, **kw: calls.append(("seed_run", a, kw)))
-    monkeypatch.setattr(scenario_player.seed, "add_ls", lambda *a, **kw: calls.append(("add_ls", a, kw)))
-    monkeypatch.setattr(scenario_player.seed, "end_run", lambda *a, **kw: calls.append(("end_run", a, kw)))
+    calls = _record_seed_calls(monkeypatch)
     # Real playback would sleep between events; skip that entirely so the test
     # is instant and deterministic -- ordering/arguments are what's under test.
     monkeypatch.setattr(scenario_player.time, "sleep", lambda _seconds: None)
@@ -168,10 +173,7 @@ def test_play_fires_events_in_order_with_expected_arguments(monkeypatch):
 
 
 def test_play_fires_one_seed_run_and_add_ls_per_calibration_but_one_end_run(monkeypatch):
-    calls = []
-    monkeypatch.setattr(scenario_player.seed, "seed_run", lambda *a, **kw: calls.append(("seed_run", a, kw)))
-    monkeypatch.setattr(scenario_player.seed, "add_ls", lambda *a, **kw: calls.append(("add_ls", a, kw)))
-    monkeypatch.setattr(scenario_player.seed, "end_run", lambda *a, **kw: calls.append(("end_run", a, kw)))
+    calls = _record_seed_calls(monkeypatch)
     monkeypatch.setattr(scenario_player.time, "sleep", lambda _seconds: None)
 
     scenario = {
@@ -193,6 +195,223 @@ def test_play_fires_one_seed_run_and_add_ls_per_calibration_but_one_end_run(monk
     assert {c[1][0] for c in seed_run_calls} == {"EcalPedestals", "SiStripBad"}
     assert {c[1][0] for c in add_ls_calls} == {"EcalPedestals", "SiStripBad"}
     assert end_run_calls == [("end_run", (500,), {})]  # exactly one, calibration-agnostic
+
+
+def _three_instant_scenario(calibrations=("BeamSpot",)):
+    """One run whose events land at three distinct offsets: +0s (start_run plus LS 1),
+    +5s (LS 2), +10s (end_run)."""
+    return {
+        "runs": [
+            {
+                "calibrations": list(calibrations),
+                "run": 7,
+                "lumisections": [{"ls": 1, "after": 0}, {"ls": 2, "after": 5}],
+                "end_after": 5,
+            }
+        ]
+    }
+
+
+def test_interactive_waits_for_confirmation_instead_of_sleeping(monkeypatch):
+    calls = _record_seed_calls(monkeypatch)
+    sleeps = []
+    monkeypatch.setattr(scenario_player.time, "sleep", sleeps.append)
+    prompts = []
+
+    events = scenario_player.build_timeline(_three_instant_scenario())
+    scenario_player.play(events, log=lambda _msg: None, prompt=prompts.append)
+
+    # The scenario's delays are *replaced* by the confirmations, not waited out as well.
+    assert sleeps == []
+    assert len(prompts) == 3
+    assert [c[0] for c in calls] == ["seed_run", "add_ls", "add_ls", "end_run"]
+
+
+def test_interactive_asks_once_per_scheduled_instant_not_once_per_calibration(monkeypatch):
+    calls = _record_seed_calls(monkeypatch)
+    prompts = []
+
+    # Two calibrations on one run: 7 events (2 seed-run, 4 add-ls, 1 end-run) but still
+    # only the same 3 offsets, so one keypress each rather than one per event.
+    events = scenario_player.build_timeline(_three_instant_scenario(["EcalPedestals", "SiStripBad"]))
+    scenario_player.play(events, log=lambda _msg: None, prompt=prompts.append)
+
+    assert len(events) == 7
+    assert len(prompts) == 3
+    assert "seed-run --calibration EcalPedestals --run 7" in prompts[0]
+    assert "seed-run --calibration SiStripBad --run 7" in prompts[0]
+    assert len(calls) == 7
+
+
+def test_interactive_prompt_names_the_next_events_and_counts_the_steps(monkeypatch):
+    _record_seed_calls(monkeypatch)
+    prompts = []
+
+    events = scenario_player.build_timeline(_three_instant_scenario())
+    scenario_player.play(events, log=lambda _msg: None, prompt=prompts.append)
+
+    assert prompts[0].startswith("[1/3] next, scheduled +0.0s -- 2 event(s):")
+    assert "seed-run --calibration BeamSpot --run 7" in prompts[0]
+    assert "add-ls --calibration BeamSpot --run 7 --ls 1" in prompts[0]
+    assert prompts[2].startswith("[3/3] next, scheduled +10.0s -- 1 event(s):")
+    assert "end-run --run 7" in prompts[2]
+    # The prompt is the last line, so whatever is asked is what the terminal shows last.
+    assert prompts[2].endswith(">>> Press Enter to fire (Ctrl-C to stop here)... ")
+
+
+def test_interactive_fires_nothing_before_its_own_confirmation(monkeypatch):
+    calls = _record_seed_calls(monkeypatch)
+    fired_so_far = []
+
+    events = scenario_player.build_timeline(_three_instant_scenario())
+    scenario_player.play(
+        events, log=lambda _msg: None, prompt=lambda _text: fired_so_far.append(len(calls))
+    )
+
+    # Instants of 2, 1 and 1 events: nothing may be fired ahead of its own keypress.
+    assert fired_so_far == [0, 2, 3]
+    assert len(calls) == 4
+
+
+@pytest.mark.parametrize("failure", [EOFError, KeyboardInterrupt])
+def test_interactive_lets_prompt_failures_reach_the_caller(monkeypatch, failure):
+    calls = _record_seed_calls(monkeypatch)
+    asked = []
+
+    def prompt(text):
+        asked.append(text)
+        if len(asked) == 2:
+            raise failure()
+
+    events = scenario_player.build_timeline(_three_instant_scenario())
+    # play() holds no policy on either of these -- main() decides what a Ctrl-C or a
+    # closed stdin means, and whether it's worth an exit code.
+    with pytest.raises(failure):
+        scenario_player.play(events, log=lambda _msg: None, prompt=prompt)
+
+    assert [c[0] for c in calls] == ["seed_run", "add_ls"]  # only the first instant's events
+
+
+def test_timed_playback_sleeps_and_never_prompts(monkeypatch):
+    calls = _record_seed_calls(monkeypatch)
+    sleeps = []
+    monkeypatch.setattr(scenario_player.time, "sleep", sleeps.append)
+
+    events = scenario_player.build_timeline(_three_instant_scenario())
+    scenario_player.play(events, log=lambda _msg: None)
+
+    # Three instants, the first of them at +0.0s -- so only the latter two actually wait.
+    assert len(sleeps) == 2
+    assert len(calls) == 4
+
+
+@pytest.mark.parametrize(
+    "flags, expected_error",
+    [
+        (["--interactive", "--dry-run"], "mutually exclusive"),
+        (["--interactive", "--speed", "5"], "--speed has no meaning"),
+        (["--speed", "0"], "must be positive"),
+        (["--monitor", "--dry-run"], "--monitor has no meaning"),
+    ],
+)
+def test_main_rejects_contradictory_flag_combinations(monkeypatch, capsys, flags, expected_error):
+    # The scenario path deliberately doesn't exist: these combinations have to be rejected
+    # before the file is ever read, so the error is about the flags and nothing else.
+    monkeypatch.setattr(sys, "argv", ["scenario_player.py", "does-not-exist.yaml", *flags])
+
+    with pytest.raises(SystemExit) as exit_info:
+        scenario_player.main()
+
+    assert exit_info.value.code == 2
+    assert expected_error in capsys.readouterr().err
+
+
+def _monitor(tmp_path, **kwargs):
+    """A DataDirMonitor over a scratch $NGT_DEV_HOME/data, plus the list it logs into.
+    Constructing it baselines whatever the test created beforehand."""
+    lines = []
+    monitor = scenario_player.DataDirMonitor(tmp_path / "data", log=lines.append, **kwargs)
+    return monitor, lines
+
+
+def test_monitor_reports_only_what_appears_after_it_is_constructed(tmp_path):
+    run_dir = tmp_path / "data" / "EcalPedestals" / "run398600"
+    run_dir.mkdir(parents=True)
+    (run_dir / "runStart.log").write_text("started", encoding="utf-8")
+
+    monitor, lines = _monitor(tmp_path)
+    assert monitor.poll() == []  # a demo-env left over from an earlier scenario isn't news
+
+    (run_dir / "runEnd.log").write_text("ended", encoding="utf-8")
+    assert monitor.poll() == ["data/EcalPedestals/run398600/runEnd.log  (5 B)"]
+    assert len(lines) == 1
+    assert "runStart.log" not in lines[0]
+
+
+def test_monitor_marks_directories_and_lists_parents_first(tmp_path):
+    monitor, lines = _monitor(tmp_path)
+    alca_dir = tmp_path / "data" / "EcalPedestals" / "run398600" / "alcaPromptJob000"
+    alca_dir.mkdir(parents=True)
+    (alca_dir / "stdout.log").write_text("job output\n", encoding="utf-8")
+
+    # Directories get a trailing slash and no size; the watched root itself is never
+    # reported, only what turns up inside it.
+    assert monitor.poll() == [
+        "data/EcalPedestals/",
+        "data/EcalPedestals/run398600/",
+        "data/EcalPedestals/run398600/alcaPromptJob000/",
+        "data/EcalPedestals/run398600/alcaPromptJob000/stdout.log  (11 B)",
+    ]
+    assert "4 new path(s) under $NGT_DEV_HOME:" in lines[0]
+    # A report starts on a line of its own, so it can't land on the tail of an
+    # --interactive prompt (which is deliberately left unterminated until Enter).
+    assert lines[0].startswith("\n  [")
+
+
+def test_monitor_survives_a_data_directory_that_does_not_exist_yet(tmp_path):
+    monitor, lines = _monitor(tmp_path)
+
+    assert monitor.poll() == []
+    assert lines == []
+    # The player must never create environment state: a missing data directory means
+    # `live_demo.sh setup` hasn't run, and silently making one would hide that.
+    assert not monitor.root.exists()
+
+    (monitor.root / "SiStripBad").mkdir(parents=True)
+    assert monitor.poll() == ["data/SiStripBad/"]
+
+
+def test_monitor_reports_each_path_once(tmp_path):
+    monitor, _lines = _monitor(tmp_path)
+    run_dir = tmp_path / "data" / "EcalPedestals" / "run398600"
+    run_dir.mkdir(parents=True)
+    script = run_dir / "ALCAOUTPUT.sh"
+    script.write_text("#!/bin/bash\n", encoding="utf-8")
+
+    assert any("ALCAOUTPUT.sh" in line for line in monitor.poll())
+    assert monitor.poll() == []  # not again for merely still existing
+
+    # ALCAOUTPUT.sh self-deletes on success -- going away is silent, but a regenerated
+    # one is news again.
+    script.unlink()
+    assert monitor.poll() == []
+    script.write_text("#!/bin/bash\n", encoding="utf-8")
+    assert monitor.poll() == ["data/EcalPedestals/run398600/ALCAOUTPUT.sh  (12 B)"]
+
+
+def test_monitor_stop_reports_what_appeared_during_the_last_interval(tmp_path):
+    # interval=60 keeps this deterministic: the watcher thread parks in wait(60) for the
+    # whole test, so only stop()'s own final poll can possibly report the new directory.
+    monitor, lines = _monitor(tmp_path, interval=60)
+    monitor.start()
+    (monitor.root / "BeamSpot").mkdir(parents=True)
+    monitor.stop()
+
+    assert len(lines) == 1
+    assert "data/BeamSpot/" in lines[0]
+
+    monitor.stop()  # idempotent, and there's nothing new left to report
+    assert len(lines) == 1
 
 
 def test_scenario_files_in_repo_parse_and_build_a_nonempty_timeline():

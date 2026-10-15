@@ -7,15 +7,8 @@
 # For pure logic testing (no live processes, no tmux) use pytest instead -- see
 # README.md's "Running the FSM logic locally / tests" section.
 #
-# Quick start:
-#   ./scenario-player/live_demo.sh setup
-#   ./scenario-player/live_demo.sh start-all EcalPedestals
-#   ./scenario-player/live_demo.sh seed-run EcalPedestals 398600 --ls 51 52
-#   tmux attach -t NGTDemo2_EcalPedestals        # Ctrl-b d to detach
-#   ./scenario-player/live_demo.sh add-ls EcalPedestals 398600 53
-#   ./scenario-player/live_demo.sh end-run 398600
-#   ./scenario-player/live_demo.sh status
-#   ./scenario-player/live_demo.sh stop-all EcalPedestals
+# Usage:
+# See README.md or usage function below
 #
 # $NGT_DEV_HOME (default ./demo-env, i.e. a gitignored directory inside this repo)
 # holds all scratch state -- delete it any time to reset the demo environment.
@@ -37,6 +30,9 @@ Usage: $0 <command> [args]
 Setup:
   setup                                  Create/refresh the \$NGT_DEV_HOME scratch environment
                                           (safe to re-run; \$NGT_DEV_HOME default: ./demo-env)
+  reset                                  Delete \$NGT_DEV_HOME entirely -- every fake run, EOS
+                                          file, output and log. Stop the loops first; `setup`
+                                          (or `play`) recreates it
 
 Running the loops (each in its own tmux session, NGTDemo{2,3,4}_<calibration>):
   start2 <calibration>                   Launch Step 2 only
@@ -53,6 +49,11 @@ Driving a fake run (edits \$NGT_DEV_HOME/oms_runs.json + drops fake RAW files):
   add-ls <calibration> <run> <ls>        Drop one more fake RAW LS file for an existing run
   end-run <run>                          Mark the run as ended in the fake OMS
   list-runs                              Show all runs currently seeded
+  play <scenario.yaml> [options]         Play a whole timeline from a scenario file instead
+                                          of firing the three verbs above by hand; every
+                                          argument is passed straight to scenario_player.py
+                                          (--interactive, --monitor, --speed, --dry-run --
+                                          run it with --help for the full list)
 
 calibration is one of: ${CALIBRATIONS[*]}
 USAGE
@@ -85,6 +86,26 @@ cmd_setup() {
   echo
   echo "Set up $NGT_DEV_HOME"
   echo "Next: $0 start-all EcalPedestals"
+}
+
+cmd_reset() {
+  # sim_reset needs no venv (it only removes a directory) -- see sim_env.sh, which owns
+  # what "reset" means for the simulator so this verb doesn't have to repeat it.
+  local running
+  running="$(cmd_status | grep -c '^NGTDemo' || true)"
+  if [ "$running" -gt 0 ]; then
+    echo "Note: $running NGTDemo* tmux session(s) are running. Wiping the state under them"
+    echo "leaves each one latched onto a run number the fresh oms_runs.json won't contain,"
+    echo "which crashes it instead of just waiting for a new run -- stop them first with:"
+    echo "  $0 stop-all <calibration>"
+    echo
+  fi
+
+  # shellcheck disable=SC1091
+  source "$REPO_DIR/scenario-player/sim_env.sh"
+  sim_reset
+
+  echo "Next: $0 setup"
 }
 
 console_log_path() {
@@ -148,6 +169,7 @@ cmd_stop_all() {
 
 case "${1:-}" in
   setup) cmd_setup ;;
+  reset) cmd_reset ;;
   start2) start_step 2 "${2:?calibration required}" ;;
   start3) start_step 3 "${2:?calibration required}" ;;
   start4) start_step 4 "${2:?calibration required}" ;;
@@ -175,6 +197,14 @@ case "${1:-}" in
   list-runs)
     activate_venv
     python3 "$REPO_DIR/scenario-player/seed.py" list-runs
+    ;;
+  play)
+    # Everything after `play` goes to scenario_player.py untouched -- this verb is here to
+    # activate the venv and know where the script lives, not to re-parse its flags. The
+    # scenario path is resolved relative to your CWD, exactly as if you'd run it directly.
+    shift
+    activate_venv
+    python3 "$REPO_DIR/scenario-player/scenario_player.py" "$@"
     ;;
   *) usage; exit 1 ;;
 esac
