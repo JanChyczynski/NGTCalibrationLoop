@@ -222,8 +222,31 @@ For watching the actual FSM processes run -- not just pytest -- `scenario-player
 launches real `NGTLoopStep2/3/4.py` processes (one per tmux session) against a fake
 OMS/EOS/CMSSW toolchain in `scenario-player/bin/` (fake `cmsDriver.py`, `cmsRun`, `edmFileUtil`,
 `xrdfs`, `cmsrel`, `cmsenv`, `uploadConditions.py`). Everything runs for real --
-real state transitions, real generated job scripts, real output files flowing from
+real state transitions, real generated job scripts, dummy output files flowing from
 Step 2 through Step 3 to a fake Step 4 upload -- entirely offline.
+
+Quick start example:
+```bash
+./scenario-player/live_demo.sh play scenario-player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
+./scenario-player/live_demo.sh stop-all EcalPedestals
+```
+
+`--interactive`
+waits for Enter before each step (printing the command it is about to run), and
+`--monitor` reports every file the loops produce as it appears.
+
+That one command is enough from a cold start (after creating a venv and installing requirements as shown above): `play` sources the .venv, creates `$NGT_DEV_HOME` if it isn't
+there and launches Step 2/3/4 for the calibrations that scenario feeds (asking the scenario player
+which those are), then passes everything after it straight to `scenario_player.py` -- see
+[Scripting a timed sequence of runs/lumisections](#scripting-a-timed-sequence-of-runslumisections)
+below for the scenario format and the rest of the flags.
+
+Run `./scenario-player/live_demo.sh` with no arguments for the full command list. All state
+lives under `$NGT_DEV_HOME` (default `./demo-env`, a gitignored directory inside
+this repo); `./scenario-player/live_demo.sh reset` deletes it, which resets the demo
+environment completely.
+
+You can run the demo manually without a scripted scenario, e.g.:
 
 ```bash
 ./scenario-player/live_demo.sh setup                                  # create ./demo-env scratch env
@@ -235,11 +258,6 @@ tmux attach -t NGTDemo2_EcalPedestals                       # watch it react (Ct
 ./scenario-player/live_demo.sh status                                   # list running sessions
 ./scenario-player/live_demo.sh stop-all EcalPedestals                   # tear down
 ```
-
-Run `./scenario-player/live_demo.sh` with no arguments for the full command list. All state
-lives under `$NGT_DEV_HOME` (default `./demo-env`, a gitignored directory inside
-this repo); `./scenario-player/live_demo.sh reset` deletes it, which resets the demo
-environment completely.
 
 Two settings are overridable via environment variables:
 
@@ -265,18 +283,19 @@ modules found via `sys.path` (`tests/conftest.py`, and `PYTHONPATH` from `sim_en
 
 ### Scripting a timed sequence of runs/lumisections
 
-`seed.py`'s `seed-run`/`add-ls`/`end-run` are one-shot commands, handy for typing out by hand.
-For an unattended, repeatable test -- or to exercise several calibrations processing
-concurrently, which is awkward to type out live -- `scenario-player/scenario_player.py` plays
-back a whole timeline from a declarative YAML file instead:
+`scenario-player/scenario_player.py` plays
+back a whole timeline from a declarative YAML file, e.g.:
 
-```bash
-python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml            # real-time
-python3 scenario-player/scenario_player.py scenario-player/scenarios/concurrent_multi_calibration.yaml --speed 5
-python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --dry-run  # print the
-                                                                                   # resolved
-                                                                                   # timeline only
-```
+```yaml
+runs:
+  - calibrations: [EcalPedestals, SiStripBad]
+    run: 398800
+    start_offset: 0
+    lumisections:
+      - {ls: 1, after: 0}
+      - {ls: 2, after: 15}
+    end_after: 20
+```    
 
 A scenario lists one or more runs with a start offset and a sequence of lumisections separated
 by delays; events from multiple runs merge into one global timeline. Runs may not overlap (only
@@ -285,6 +304,24 @@ lumisections across several calibrations at once -- see `scenario-player/scenari
 module docstring for the full format and `scenario-player/scenarios/*.yaml` for worked examples.
 Run numbers must be exactly six digits: the fake `edmFileUtil` parses `run<RUN6DIGIT>_ls<LS>`
 names and skips anything else.
+
+Example executions:
+
+```bash
+python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml            # real-time
+python3 scenario-player/scenario_player.py scenario-player/scenarios/concurrent_multi_calibration.yaml --speed 5
+python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
+```
+
+`./scenario-player/live_demo.sh play <scenario.yaml> [options]` is the same thing with the
+venv activated, the scratch environment set up and the scenario's loops started for you --
+every argument after `play` is passed straight through.
+
+The player itself starts no loops -- `./scenario-player/live_demo.sh play` does that for you,
+and `setup` / `start-all <calibration>` are still there to drive by hand. `--monitor` reports
+*new* paths only, so a `demo-env` left over from an earlier scenario won't flood the output,
+and file *contents* are still yours to look at (`tail` a `stdout.log`, or
+`./scenario-player/live_demo.sh logs <calibration> 2`).
 
 This calls `seed.py`'s functions directly, nothing more -- the same engine-agnostic layer
 `seed.py` itself is.
