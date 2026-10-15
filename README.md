@@ -238,7 +238,8 @@ tmux attach -t NGTDemo2_EcalPedestals                       # watch it react (Ct
 
 Run `./scenario-player/live_demo.sh` with no arguments for the full command list. All state
 lives under `$NGT_DEV_HOME` (default `./demo-env`, a gitignored directory inside
-this repo) -- delete it any time to reset the demo environment.
+this repo); `./scenario-player/live_demo.sh reset` deletes it, which resets the demo
+environment completely.
 
 Two settings are overridable via environment variables:
 
