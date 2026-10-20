@@ -247,6 +247,14 @@ which those are), then passes everything after it straight to `scenario_player.p
 [Scripting a timed sequence of runs/lumisections](#scripting-a-timed-sequence-of-runslumisections)
 below for the scenario format and the rest of the flags.
 
+Every shipped scenario also declares what should reach the conditions DB (an `expect:` block, see
+[Validating the result](#validating-the-result-did-the-scenario-actually-pass) below), which the
+player checks once playback is over. Those blocks describe the Airflow design's uploads, though:
+these loops' Step 4 uploads the final payload once more when the run ends, a duplicate they
+reject, so a run that did everything else right still ends in `expectations: FAILED` here. Add
+`--no-validate` to skip the check (the `pytest -m scenario` test does, and checks the payloads its
+own way).
+
 Run `./scenario-player/live_demo.sh` with no arguments for the full command list. All state
 lives under `$NGT_DEV_HOME` (default `./demo-env`, a gitignored directory inside
 this repo); `./scenario-player/live_demo.sh reset` deletes it, which resets the demo
@@ -313,6 +321,17 @@ The same mocks as above apply, except that job launches are intercepted one leve
   needed.
 - `tests/test_faults.py`, `tests/test_job_faults.py`, `tests/test_oms_faults.py` -- the
   declarative fault vocabulary (see "Fault injection" below).
+- `tests/test_fake_toolchain_provenance.py`, `tests/test_scenario_conddb.py`,
+  `tests/test_scenario_expectations.py` -- the provenance chain through the fake toolchain (run as
+  real subprocesses), the conditions-DB ledger and the `expect:` matching rules (see "Validating
+  the result" below).
+- `tests/test_fake_toolchain_isolation.py`, `tests/test_sim_env.py` -- what `sim_env.sh`'s
+  generated `env.sh` gives a shell: the fake toolchain winning over an exported `cmsenv`, and the
+  fault-injection paths (with a real bash).
+- `tests/test_scenario_basic_ecal_pedestals.py` -- the slow end-to-end run, deselected by default
+  (`pytest -m scenario`; CI's `scenario-test` job): plays `basic_ecal_pedestals.yaml` through
+  `live_demo.sh` against the real FSM loops and checks what they left behind, the payloads that
+  reached the conditions DB included.
 - `tests/airflow_designs/test_dags_watch.py` -- DagBag import-error/structure checks for the
   AssetWatcher design, the two watcher triggers' async `run()` driven to completion against a
   fake `AssetStateStore` (plain `asyncio.run()` calls -- no `pytest-asyncio` needed), and direct
