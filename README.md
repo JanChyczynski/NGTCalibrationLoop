@@ -345,7 +345,8 @@ OMS (`connection_error`, `timeout`, `http_error` with a status, `malformed_json`
 vocabulary is `scenario-player/faults.py`. pytest arms the fake OMS in-process with
 `tests/stubs/omsapi`'s `set_failure()`; a live run arms faults by writing
 `$NGT_DEV_HOME/faults/<target>.json`, which the fakes consume -- from a scenario's top-level
-`faults:` list (see `scenario-player/scenarios/fault_injection_demo.yaml`) or by hand:
+`faults:` list (see `scenario-player/scenarios/fault_injection_demo.yaml`, or
+`oms_outage_demo.yaml`, which takes OMS down just as a run starts) or by hand:
 
 ```bash
 python3 scenario-player/seed.py arm-fault --target oms --mode connection_error --times 2
