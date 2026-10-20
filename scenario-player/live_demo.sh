@@ -13,7 +13,8 @@
 # $NGT_DEV_HOME (default ./demo-env, i.e. a gitignored directory inside this repo)
 # holds all scratch state -- delete it any time to reset the demo environment.
 #
-# Configuration (overridable via environment variables):
+# Configuration (overridable via environment variables, or persistently via the gitignored
+# scenario-player/local_sim_env.sh -- see local_sim_env.sh.example):
 #   NGT_DEV_HOME              scratch state directory        (default: $REPO_DIR/demo-env)
 #   NGT_INSTANCE              names this checkout's tmux sessions (default: see sim_env.sh)
 #   NGT_LOOP_SLEEP_SECONDS    Step 3/4 poll interval, seconds  (default: 5; production default is 60)
@@ -21,8 +22,9 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# NGT_DEV_HOME, NGT_INSTANCE and ngt_tmux_new_session -- sourced here rather than only by
-# setup/reset, so every verb agrees on where the scratch state is and whose sessions are whose.
+# NGT_DEV_HOME, NGT_INSTANCE and the rest of the simulator's settings, local_sim_env.sh
+# included -- sourced here rather than only by setup/reset, so every verb agrees on where the
+# scratch state is and whose sessions are whose.
 # shellcheck disable=SC1091
 source "$REPO_DIR/scenario-player/sim_env.sh"
 # Every session of this checkout starts with it, so two checkouts' loops can run side by side.
