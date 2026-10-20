@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+import conddb  # scenario-player/conddb.py, on sys.path via tests/conftest.py
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LIVE_DEMO = REPO_ROOT / "scenario-player" / "live_demo.sh"
 SCENARIO = REPO_ROOT / "scenario-player" / "scenarios" / "basic_ecal_pedestals.yaml"
@@ -104,6 +106,14 @@ def test_basic_ecal_pedestals_scenario(demo_home):
 
     # Step 4 harvested at least once...
     assert list(run_dir.glob("harvestJob*/*.db")), "no harvestJob directory contains a .db file"
+
+    # ...and what reached the dummy conditions DB ends with the whole run. Step 4 uploads after each
+    # new Step 3 output and once more when the run ends, so how many rows lead up to the last one is
+    # timing-dependent -- but every row is this run's, and the last covers every lumisection.
+    rows = conddb.read_ledger(str(home / "conddb" / conddb.LEDGER_NAME))
+    assert rows, "nothing reached the dummy conditions DB"
+    assert {(row["calibration"], row["run"]) for row in rows} == {(CALIBRATION, run)}
+    assert rows[-1]["lumisections"] == ls_numbers
 
     # ...and nothing along the way wrote an error.
     error_logs = [*(home / "data").rglob("*stderr.log"), *(home / "logs").rglob("*ERROR.log")]
