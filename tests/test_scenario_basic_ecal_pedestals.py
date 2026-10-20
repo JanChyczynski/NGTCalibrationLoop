@@ -3,8 +3,10 @@ End-to-end "scenario-test": plays scenario-player/scenarios/basic_ecal_pedestals
 scenario-player/live_demo.sh (real NGTLoopStep2/3/4.py processes in tmux against the fake
 OMS/EOS/CMSSW toolchain) and checks what the loops left behind in a scratch $NGT_DEV_HOME.
 
-Slow (about a minute) and needs bash + tmux + the repo-root .venv, so it is deselected from the
-default `pytest` run (see pytest.ini) -- run it with `pytest -m scenario` (CI: scenario-test).
+Slow (a couple of minutes, most of it the player waiting for the uploads to settle before it
+checks the scenario's expect: block) and needs bash + tmux + the repo-root .venv, so it is
+deselected from the default `pytest` run (see pytest.ini) -- run it with `pytest -m scenario`
+(CI: scenario-test).
 """
 import os
 import shutil
@@ -73,10 +75,9 @@ def test_basic_ecal_pedestals_scenario(demo_home):
     ls_numbers = [ls["ls"] for ls in spec["lumisections"]]
     run_dir = home / "data" / CALIBRATION / f"run{run}"
 
-    # --no-validate: the scenario's expect: block describes the Airflow design's upload sequence,
-    # and the FSM's Step 4 re-harvests once more when the run ends, re-uploading the final LS set
-    # -- a duplicate those expectations reject. The checks below are the FSM's own.
-    played = demo("play", str(SCENARIO), "--speed", str(SPEED), "--no-validate")
+    # The player checks the scenario's own expect: block once the uploads settle and exits 1 if it
+    # doesn't hold -- loosely for now, see the TODO beside it. The checks below are the FSM's own.
+    played = demo("play", str(SCENARIO), "--speed", str(SPEED))
     assert played.returncode == 0, played.stdout + played.stderr
 
     # Playback is over; give the loops time to finish. Step 4 writes allStep3FilesProcessed.log once,
