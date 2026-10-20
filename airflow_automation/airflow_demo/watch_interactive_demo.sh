@@ -4,9 +4,12 @@
 # `airflow_demo.sh play <scenario> --interactive --monitor` -- the same scenario player, flags and
 # scenario files as the FSM loops' walkthrough (`scenario-player/live_demo.sh play ... --interactive
 # --monitor`) -- so each step of the scenario waits for Enter, and every file the pipeline produces
-# is reported as it appears. Around it: what to watch for in this design, a reset if the scenario's
-# runs were already played, and an offer to stop Airflow at the end. Needs a Linux host (Airflow
-# has no Windows support; WSL works).
+# is reported as it appears. Next to those files, watch_views.py reports the same activity from
+# Airflow's side as it happens -- each Asset event, the DagRun it triggers and its state, any task
+# retry -- and sums it up at the end, with the watchers' AssetStateStore watermarks. Around it: what
+# to watch for in this design, a reset if $NGT_DEV_HOME isn't fresh (the scenario's runs already
+# played, or an earlier scenario's uploads still in the ledger), and an offer to stop Airflow at the
+# end. Needs a Linux host (Airflow has no Windows support; WSL works).
 #
 # What to watch for, compared to the FSM loops:
 #   * NO cron DAGs at all. Two kinds of AssetWatcher run continuously in the
@@ -39,6 +42,7 @@ set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AIRFLOW_DEMO="$REPO_DIR/airflow_automation/airflow_demo/airflow_demo.sh"
+VIEWS="$REPO_DIR/airflow_automation/airflow_demo/watch_views.py"
 # Sets NGT_DEV_HOME/NGT_AIRFLOW_VENV/... -- this checkout's defaults plus any local_*_env.sh overrides.
 # shellcheck disable=SC1091
 source "$REPO_DIR/airflow_automation/airflow_demo/airflow_env.sh"
@@ -138,6 +142,8 @@ if [ "$AUTO_CONTINUE" = "1" ]; then
 else
   note "each step of the scenario waits for Enter; files the pipeline produces are reported as they appear"
 fi
+note "Airflow's side of the same activity -- Asset events, the DagRuns they trigger, task retries --"
+note "  is reported in '[time] Airflow:' blocks as it happens, and summed up at the end"
 note "Airflow UI: http://localhost:$NGT_AIRFLOW_PORT (once it's up)"
 if [ ! -f "$NGT_AIRFLOW_VENV/bin/activate" ]; then
   echo "No Airflow venv at $NGT_AIRFLOW_VENV -- see README.md's Airflow setup section" >&2
@@ -174,14 +180,26 @@ fi
 # --- 2. play it ---------------------------------------------------------------------------
 
 banner "Playing $(basename "$SCENARIO") against Airflow"
+# Airflow's view, reported alongside the player's own output until the scenario is over. It reads
+# the metadata DB, and waits for it if `play` still has to create it.
+since="$(date -u +%Y-%m-%dT%H:%M:%S)"
+python3 "$VIEWS" follow "$since" &
+follower=$!
+trap 'kill "$follower" 2>/dev/null' EXIT
 if [ "$AUTO_CONTINUE" = "1" ]; then
   run "$AIRFLOW_DEMO" play "$SCENARIO" --monitor < /dev/null
 else
   run "$AIRFLOW_DEMO" play "$SCENARIO" --interactive --monitor
 fi
 status=$?
+sleep 3  # the follower's last poll
+kill "$follower" 2>/dev/null
+wait "$follower" 2>/dev/null
 
 # --- 3. wrap up ---------------------------------------------------------------------------
+
+banner "What Airflow did"
+python3 "$VIEWS" summary "$since"
 
 banner "Done (scenario_player.py exit status: $status)"
 run "$AIRFLOW_DEMO" status

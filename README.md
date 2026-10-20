@@ -828,10 +828,14 @@ scenario against Airflow" below):
 ```
 
 For a guided walkthrough, `watch_interactive_demo.sh` wraps that last command -- `play <scenario>
---interactive --monitor`, the same scenario player and flags as the FSM loops' walkthrough -- with
-an introduction to what to watch for in the AssetWatcher design, a `reset-scenario` first if the
-scenario's runs were already played (the watchers would ignore them), and an offer to stop
-Airflow at the end:
+--interactive --monitor`, the same scenario player and flags as the FSM loops' walkthrough. Next to
+the files the pipeline produces, it reports Airflow's side of the same activity as it happens --
+each Asset event, the DagRun it triggers and that DagRun's state, any task retry
+(`airflow_automation/airflow_demo/watch_views.py`) -- and sums it up at the end, with the watchers'
+`AssetStateStore` watermarks. Around that: an introduction to what to watch for in the AssetWatcher
+design, a `reset-scenario` first if `$NGT_DEV_HOME` isn't fresh -- the scenario's runs already
+played (the watchers would ignore them) or an earlier scenario's uploads still in the
+conditions-DB ledger (its check would count them) -- and an offer to stop Airflow at the end:
 
 ```bash
 ./airflow_automation/airflow_demo/watch_interactive_demo.sh                                      # basic_ecal_pedestals.yaml
