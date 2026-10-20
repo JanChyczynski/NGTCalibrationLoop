@@ -827,15 +827,16 @@ scenario against Airflow" below):
 ./airflow_automation/airflow_demo/airflow_demo.sh play scenario-player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
 ```
 
-For a guided, narrated walkthrough that pauses between steps and shows you the relevant output
-directories/files, Assets and DAG-run history so you can watch the run watcher -> run primer ->
-file watcher -> process chain actually happening (plus a demonstration of a forced job
-failure retrying), use:
+For a guided walkthrough, `watch_interactive_demo.sh` wraps that last command -- `play <scenario>
+--interactive --monitor`, the same scenario player and flags as the FSM loops' walkthrough -- with
+an introduction to what to watch for in the AssetWatcher design, a `reset-scenario` first if the
+scenario's runs were already played (the watchers would ignore them), and an offer to stop
+Airflow at the end:
 
 ```bash
-./airflow_automation/airflow_demo/watch_interactive_demo.sh                                      # EcalPedestals, 2 LS
-./airflow_automation/airflow_demo/watch_interactive_demo.sh --calibration SiStripBad --ls 4
-./airflow_automation/airflow_demo/watch_interactive_demo.sh --yes                                # don't pause between steps
+./airflow_automation/airflow_demo/watch_interactive_demo.sh                                      # basic_ecal_pedestals.yaml
+./airflow_automation/airflow_demo/watch_interactive_demo.sh scenario-player/scenarios/fault_injection_demo.yaml  # crashed jobs retrying
+./airflow_automation/airflow_demo/watch_interactive_demo.sh --yes                                # on its own timeline, no pauses
 ```
 
 ### Playing a scenario against Airflow
@@ -979,8 +980,8 @@ above):
 ./airflow_automation/airflow_demo/airflow_demo.sh pause-watch              # stops the watchers
 ```
 
-For a paced, narrated walkthrough instead (including a forced-failure/retry demonstration), use
-`./airflow_automation/airflow_demo/watch_interactive_demo.sh`.
+For a paced walkthrough instead, use `./airflow_automation/airflow_demo/watch_interactive_demo.sh`
+(with `scenario-player/scenarios/fault_injection_demo.yaml` to watch crashed jobs retrying).
 
 `tests/airflow_designs/test_dags_watch.py` covers the design (see "Tests of the library and the simulator" above).
 

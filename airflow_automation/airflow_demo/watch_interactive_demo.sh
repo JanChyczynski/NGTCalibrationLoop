@@ -1,11 +1,14 @@
 #!/bin/bash
-# Guided, narrated walkthrough of the AssetWatcher DAG design -- the all-static-
-# asset, AssetWatcher-driven variant (airflow_automation/airflow_dags/ngt_dags_watch.py, driven
-# via airflow_demo.sh) against the fake OMS/EOS/CMSSW toolchain in
-# scenario-player/bin/. Needs a Linux host (Airflow has no Windows support; WSL works).
+# Guided walkthrough of the AssetWatcher DAG design (airflow_automation/airflow_dags/ngt_dags_watch.py)
+# against the fake OMS/EOS/CMSSW toolchain in scenario-player/bin/: a scenario played with
+# `airflow_demo.sh play <scenario> --interactive --monitor` -- the same scenario player, flags and
+# scenario files as the FSM loops' walkthrough (`scenario-player/live_demo.sh play ... --interactive
+# --monitor`) -- so each step of the scenario waits for Enter, and every file the pipeline produces
+# is reported as it appears. Around it: what to watch for in this design, a reset if the scenario's
+# runs were already played, and an offer to stop Airflow at the end. Needs a Linux host (Airflow
+# has no Windows support; WSL works).
 #
-# Narration conventions shared with the other demo scripts. What is
-# different to *watch for* here:
+# What to watch for, compared to the FSM loops:
 #   * NO cron DAGs at all. Two kinds of AssetWatcher run continuously in the
 #     `airflow triggerer` (while ngt_watch_* is unpaused):
 #       - RunWatcherTrigger polls OMS and updates the static Asset ngt://runs;
@@ -21,17 +24,16 @@
 # See watch_asset_scheduling_design.md for the full written explanation.
 #
 # Usage:
-#   ./airflow_automation/airflow_demo/watch_interactive_demo.sh                                   # EcalPedestals, 1 run, 2 LS
-#   ./airflow_automation/airflow_demo/watch_interactive_demo.sh --calibration SiStripBad --ls 4
-#   ./airflow_automation/airflow_demo/watch_interactive_demo.sh --yes                             # don't pause between steps
+#   ./airflow_automation/airflow_demo/watch_interactive_demo.sh                    # basic_ecal_pedestals.yaml
+#   ./airflow_automation/airflow_demo/watch_interactive_demo.sh scenario-player/scenarios/fault_injection_demo.yaml
+#                                                        # ...with real Airflow retries of a crashed cmsRun / upload
+#   ./airflow_automation/airflow_demo/watch_interactive_demo.sh --yes              # play it on its own timeline
 #
 # Options:
-#   --calibration NAME   SiStripBad | EcalPedestals | BeamSpot   (default: EcalPedestals)
-#   --run N               run number to simulate                  (default: 399100)
-#   --ls N                 lumisections to seed (1 immediately, rest added one at a time)  (default: 2)
-#   --yes / -y              don't pause for confirmation between steps
-#   --keep-running          don't offer to tear down Airflow at the end
-#   --skip-failure-demo     skip the forced-failure/retry demonstration at the end
+#   [scenario.yaml]    the scenario to walk through (default: scenario-player/scenarios/basic_ecal_pedestals.yaml)
+#   --yes / -y         don't pause: play the scenario on its own timeline, reset if needed, and pause the
+#                      watch DAGs at the end without asking
+#   --keep-running     don't offer to pause the watch DAGs / stop Airflow at the end
 
 set -uo pipefail
 
@@ -41,25 +43,21 @@ AIRFLOW_DEMO="$REPO_DIR/airflow_automation/airflow_demo/airflow_demo.sh"
 # shellcheck disable=SC1091
 source "$REPO_DIR/airflow_automation/airflow_demo/airflow_env.sh"
 
-CALIBRATION="EcalPedestals"
-RUN=399100
-NUM_LS=2
+SCENARIO="$REPO_DIR/scenario-player/scenarios/basic_ecal_pedestals.yaml"
 AUTO_CONTINUE=0
 KEEP_RUNNING=0
-SKIP_FAILURE_DEMO=0
-RUN_TIMEOUT=45     # RunWatcherTrigger poll_interval is 5s by default; primer + dir creation a few s
-FILE_TIMEOUT=30   # LumisectionFileWatcherTrigger poll_interval 5s + process DAG chain a few s
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --calibration) CALIBRATION="$2"; shift 2 ;;
-    --run) RUN="$2"; shift 2 ;;
-    --ls) NUM_LS="$2"; shift 2 ;;
     --yes|-y) AUTO_CONTINUE=1; shift ;;
     --keep-running) KEEP_RUNNING=1; shift ;;
-    --skip-failure-demo) SKIP_FAILURE_DEMO=1; shift ;;
-    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
-    *) echo "Unknown option: $1" >&2; exit 1 ;;
+    -h|--help) awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0"; exit 0 ;;  # the header comment
+    --calibration|--run|--ls|--skip-failure-demo)
+      echo "$1 is gone: the scenario file now says which runs, calibrations and lumisections to play" >&2
+      echo "(see scenario-player/scenarios/; fault_injection_demo.yaml shows a forced failure retrying)." >&2
+      exit 1 ;;
+    -*) echo "Unknown option: $1" >&2; exit 1 ;;
+    *) SCENARIO="$1"; shift ;;
   esac
 done
 
@@ -82,222 +80,130 @@ confirm() {
   [[ "$reply" =~ ^[Yy] ]]
 }
 
-show_tree() {
-  local dir="$1" label="$2"
-  echo "  $label ($dir):"
-  if [ -d "$dir" ] && [ -n "$(find "$dir" -maxdepth 4 -mindepth 1 2>/dev/null)" ]; then
-    find "$dir" -maxdepth 4 2>/dev/null | sort | sed "s|^$dir|   .|"
-  else
-    echo "    (empty or not created yet)"
-  fi
-}
-
-show_file() {
-  local path="$1" label="$2" max_lines="${3:-15}"
-  echo "  $label ($path):"
-  if [ -f "$path" ]; then sed 's/^/    | /' "$path" | tail -n "$max_lines"; else echo "    (not present)"; fi
-}
-
-wait_until_glob() {
-  local dir="$1" pattern="$2" timeout="$3" description="$4"
-  echo -n "  Waiting up to ${timeout}s for $description "
-  local waited=0 found=""
-  while [ "$waited" -lt "$timeout" ]; do
-    found="$(find "$dir" -maxdepth 4 -name "$pattern" 2>/dev/null | sort | head -1)"
-    [ -n "$found" ] && break
-    sleep 2; waited=$((waited + 2)); echo -n "."
-  done
-  echo
-  if [ -n "$found" ]; then
-    echo "  -> appeared after ~${waited}s: $found"
-  else
-    echo "  -> still nothing matching '$pattern' under $dir after ${timeout}s"
-    echo "     (check: $0's --calibration matches, or: $AIRFLOW_DEMO ui)"
-  fi
-}
-
-activate_airflow() {
-  source "$REPO_DIR/airflow_automation/airflow_demo/airflow_env.sh" 2>/dev/null
-  source "$NGT_AIRFLOW_VENV/bin/activate" 2>/dev/null
-}
-
-show_dag_runs() {
-  local dag_id="$1" pattern="${2:-}"
-  echo "  Recent DAG runs for $dag_id${pattern:+ matching '$pattern'}:"
-  activate_airflow
-  if [ -n "$pattern" ]; then
-    airflow dags list-runs "$dag_id" 2>/dev/null | grep -i "$pattern" | sed 's/^/    /' || echo "    (none yet)"
-  else
-    airflow dags list-runs "$dag_id" 2>/dev/null | tail -n +1 | sed 's/^/    /' || echo "    (none yet)"
-  fi
-}
-
-show_assets() {
-  activate_airflow
-  echo "  Static Assets (all show in the UI Assets view -- $AIRFLOW_DEMO ui):"
-  airflow assets list 2>/dev/null | grep -E 'ngt://runs|ngt://files/' | sed 's/^/    /' \
-    || echo "    (not registered yet -- unpause ngt_watch_* first)"
-  note "watermarks (seen runs / emitted files) are in each Asset's AssetStateStore:"
-  note "  Airflow UI -> Assets -> <asset> -> State store, or GET /api/v2/assets/{id}/state-store"
-}
-
-show_triggerer_watchers() {
-  local log="$NGT_DEV_HOME/logs/tmux_console_airflow_triggerer.log"
-  echo "  Triggerer watcher activity (last few lines of $log):"
-  if [ -f "$log" ]; then
-    grep -iE 'watch|RunWatcher|LumisectionFileWatcher|ngt://' "$log" | tail -n 8 | sed 's/^/    /' || echo "    (no watcher lines yet)"
-  else
-    echo "    (no triggerer log yet -- has '$AIRFLOW_DEMO start' been run?)"
-  fi
-}
-
 run() { echo "+ $*"; "$@"; }
-lower_calibration() { echo "$CALIBRATION" | tr '[:upper:]' '[:lower:]'; }
 
-# --- 0. sanity ------------------------------------------------------------------------
+stale_state() {
+  # What would make playing this scenario on $NGT_DEV_HOME as it stands mislead, as
+  # "<runs>|<uploads>": the scenario's run numbers this instance has already handled -- a working
+  # dir left in $NGT_DEV_HOME (find_new_run skips it) or the run in the run watcher's seen_runs
+  # watermark (it never announces a run twice), so playing them again does nothing -- and the
+  # uploads an earlier scenario left in the conditions-DB ledger, which this scenario's expect:
+  # block would count as unexpected payloads. reset-scenario clears all of it.
+  python3 - "$SCENARIO" "$NGT_DEV_HOME" <<'PY' 2>/dev/null
+import json
+import sys
+from pathlib import Path
+
+import yaml
+
+dev_home = Path(sys.argv[2])
+try:
+    runs = {int(r["run"]) for r in (yaml.safe_load(Path(sys.argv[1]).read_text()) or {}).get("runs", [])}
+except Exception:
+    runs = set()  # malformed -- let `play` report it
+played = {run for run in runs if any((dev_home / "data").glob(f"*/run{run}"))}
+try:
+    from airflow.models.asset import AssetModel
+    from airflow.models.asset_state_store import AssetStateStoreModel
+    from airflow.utils.session import create_session
+
+    with create_session() as session:
+        for row in (
+            session.query(AssetStateStoreModel)
+            .join(AssetModel, AssetModel.id == AssetStateStoreModel.asset_id)
+            .filter(AssetModel.uri.like("ngt://runs%"), AssetStateStoreModel.key == "seen_runs")
+        ):
+            seen = json.loads(row.value) if isinstance(row.value, str) else row.value  # stored JSON-encoded
+            played |= runs & {int(r) for r in (seen or [])}
+except Exception:
+    pass  # no database yet: nothing has been played
+ledger = dev_home / "conddb" / "payloads.jsonl"
+uploads = sum(1 for line in ledger.read_text().splitlines() if line.strip()) if ledger.exists() else 0
+print(" ".join(str(run) for run in sorted(played)) + f"|{uploads}")
+PY
+}
+
+# --- 0. what this is --------------------------------------------------------------------
 
 banner "NGT Calibration Loop -- AssetWatcher (all-static-asset) DAG design live walkthrough"
-note "calibration=$CALIBRATION  run=$RUN  ls=$NUM_LS"
+note "scenario: $SCENARIO"
 note "\$NGT_DEV_HOME=$NGT_DEV_HOME"
-note "see watch_asset_scheduling_design.md for what run_primer / the watchers / process actually do"
+note "what to watch for: no cron DAGs -- RunWatcherTrigger (in the triggerer) polls OMS and updates"
+note "  Asset ngt://runs, which wakes ngt_watch_run_primer to create the per-calibration working dirs;"
+note "  the 3 LumisectionFileWatcherTriggers then update ngt://files/<cal> once per new file, and each"
+note "  of those events is one ngt_watch_process_<cal> DagRun (Step 2 -> 3 -> 4) -- see this script's"
+note "  header and watch_asset_scheduling_design.md"
+if [ "$AUTO_CONTINUE" = "1" ]; then
+  note "--yes: the scenario plays on its own timeline"
+else
+  note "each step of the scenario waits for Enter; files the pipeline produces are reported as they appear"
+fi
+note "Airflow UI: http://localhost:$NGT_AIRFLOW_PORT (once it's up)"
 if [ ! -f "$NGT_AIRFLOW_VENV/bin/activate" ]; then
   echo "No Airflow venv at $NGT_AIRFLOW_VENV -- see README.md's Airflow setup section" >&2
   exit 1
 fi
 command -v tmux >/dev/null || { echo "tmux is required" >&2; exit 1; }
+# shellcheck disable=SC1091
+source "$NGT_AIRFLOW_VENV/bin/activate"
 pause
 
-# --- 1. setup -----------------------------------------------------------------------------
+# --- 1. a scenario needs fresh scratch state ------------------------------------------------
 
-banner "[SIM] 1. Setting up the scratch environment"
-run "$AIRFLOW_DEMO" setup
-show_file "$NGT_DEV_HOME/ngtParameters.jsn" "ngtParameters.jsn (paths redirected into \$NGT_DEV_HOME)"
-pause
-
-# --- 2. start airflow + unpause ONLY the watch DAGs -------------------------------------
-
-banner "[AIRFLOW] 2. Starting Airflow (incl. triggerer -- it hosts the watchers) and unpausing the 4 watch DAGs"
-run "$AIRFLOW_DEMO" start
-note "giving the dag-processor time to parse airflow_automation/airflow_dags/ngt_dags_watch.py..."
-sleep 15
-note "unpausing ngt_watch_* is also what STARTS the 4 AssetWatchers in the triggerer"
-run "$AIRFLOW_DEMO" unpause-watch
-run "$AIRFLOW_DEMO" status
-run "$AIRFLOW_DEMO" ui
-show_assets
-pause
-
-RUN_DATA_DIR="$NGT_DEV_HOME/data/$CALIBRATION"
-RUN_DIR="$RUN_DATA_DIR/run$RUN"
-FIRST_LS=51
-LOWER="$(lower_calibration)"
-
-# --- 3. seed a run and watch RunWatcherTrigger -> primer -> file watchers -----------------
-
-banner "[SIM+AIRFLOW] 3. Seeding run $RUN with its first lumisection ($FIRST_LS)"
-run "$AIRFLOW_DEMO" seed-run "$CALIBRATION" "$RUN" --ls "$FIRST_LS"
-run "$AIRFLOW_DEMO" list-runs
-note "RunWatcherTrigger (in the triggerer) polls OMS, sees run $RUN, updates Asset ngt://runs;"
-note "that wakes ngt_watch_run_primer, which calls step2.find_new_run per calibration -> working dirs"
-wait_until_glob "$RUN_DATA_DIR" "run${RUN}" "$RUN_TIMEOUT" "run_primer to create run $RUN's working dir"
-show_tree "$RUN_DIR" "Run $RUN working dir"
-show_dag_runs ngt_watch_run_primer
-show_triggerer_watchers
-pause
-
-banner "[SIM] 3.a  Watching LumisectionFileWatcherTrigger notice LS $FIRST_LS and fire ngt://files/${LOWER}"
-note "the file watcher was idle (no run dir); now it scans run$RUN/, sees the new file, and yields"
-note "one Asset event -> one ngt_watch_process_${LOWER} DagRun for that file"
-wait_until_glob "$RUN_DIR" "run${RUN}_LS*.root" "$FILE_TIMEOUT" "Step 2's output for LS $FIRST_LS"
-show_tree "$RUN_DIR" "Run $RUN working dir"
-show_dag_runs "ngt_watch_process_${LOWER}" "run${RUN}"
-show_assets
-pause
-
-banner "[SIM] 3.b  Same processing DagRun finishing Step 3 and Step 4"
-wait_until_glob "$RUN_DIR" "alcaPromptJob*" "$FILE_TIMEOUT" "an alcaPromptJob_* directory (Step 3)"
-wait_until_glob "$RUN_DIR" "harvestJob*" "$FILE_TIMEOUT" "a harvestJob_* directory (Step 4)"
-show_tree "$RUN_DIR" "Run $RUN working dir"
-pause
-
-if [ "$NUM_LS" -gt 1 ]; then
-  for extra in $(seq 2 "$NUM_LS"); do
-    LS=$((FIRST_LS + extra - 1))
-    banner "[SIM] 3.c$extra  New lumisection: run $RUN, LS $LS  (one more process DagRun for just this file)"
-    run "$AIRFLOW_DEMO" add-ls "$CALIBRATION" "$RUN" "$LS"
-    wait_until_glob "$RUN_DIR" "run${RUN}_LS*${LS}*.root" "$FILE_TIMEOUT" "Step 2's output for LS $LS"
-    show_tree "$RUN_DIR" "Run $RUN working dir"
-    pause
-  done
-fi
-
-show_dag_runs "ngt_watch_process_${LOWER}" "run${RUN}"
-note "one process DagRun per lumisection above"
-pause
-
-# --- 4. end the run and watch the file watcher write runEnd.log and go idle ---------------
-
-banner "[SIM] 4. Ending run $RUN"
-run "$AIRFLOW_DEMO" end-run "$RUN"
-note "LumisectionFileWatcherTrigger notices (check_ls_for_processing final, or the OMS run-end grace),"
-note "writes runEnd.log via step2.finalize_cycle, drops its emitted-files watermark, and goes idle"
-wait_until_glob "$RUN_DIR" "runEnd.log" "$((RUN_TIMEOUT + FILE_TIMEOUT))" "the file watcher to write runEnd.log"
-show_file "$RUN_DIR/runEnd.log" "runEnd.log"
-show_file "$RUN_DIR/allLSProcessed.log" "allLSProcessed.log"
-show_triggerer_watchers
-note "the SiStripBad/BeamSpot file watchers also wrote runEnd.log for run $RUN -- nothing to process"
-note "(no EOS files were seeded for them), same 'calibration that never gets files' behaviour as #2/#3"
-pause
-
-# --- 5. forced-failure / retry demonstration --------------------------------------------------
-
-if [ "$SKIP_FAILURE_DEMO" != "1" ]; then
-  banner "[SIM+AIRFLOW] 5. A real Airflow retry (step2_express -- shared _process_tasks.py callable)"
-  note "the step2/3/4 callables live in _process_tasks.py -- this design changes only how the process DagRun"
-  note "gets triggered (an Asset event from a watcher), not the retry behaviour."
-  if confirm "Temporarily break the fake cmsRun to force a failure and watch step2_express retry?"; then
-    FAILURE_RUN=$((RUN + 1))
-    run "$AIRFLOW_DEMO" seed-run "$CALIBRATION" "$FAILURE_RUN" --ls 51
-    mv "$NGT_DEV_HOME/bin/cmsRun" "$NGT_DEV_HOME/bin/cmsRun.disabled"
-    note "cmsRun disabled -- watching the next step2_express task fail and retry..."
-    wait_until_glob "$NGT_DEV_HOME/logs" "does-not-exist" 20 "(just pausing for a retry cycle)"
-    activate_airflow
-    failure_run_id="$(airflow dags list-runs "ngt_watch_process_${LOWER}" -o plain 2>/dev/null | grep "run${FAILURE_RUN}" | head -1 | awk '{print $2}')"
-    if [ -n "$failure_run_id" ]; then
-      airflow tasks states-for-dag-run "ngt_watch_process_${LOWER}" "$failure_run_id" 2>/dev/null | sed 's/^/    /'
-    else
-      note "(couldn't find that run's processing DagRun yet -- open the Airflow UI's Grid view: $AIRFLOW_DEMO ui)"
-    fi
-    pause
-    mv "$NGT_DEV_HOME/bin/cmsRun.disabled" "$NGT_DEV_HOME/bin/cmsRun"
-    note "cmsRun restored -- the next retry attempt should succeed"
-    pause
+state="$(stale_state)"
+played="${state%%|*}"
+earlier_uploads="${state##*|}"
+if [ -n "$played" ] || [ "${earlier_uploads:-0}" -gt 0 ]; then
+  banner "\$NGT_DEV_HOME isn't fresh for this scenario"
+  if [ -n "$played" ]; then
+    note "run(s) $played were already played against this instance: the watchers would ignore them"
+  fi
+  if [ "${earlier_uploads:-0}" -gt 0 ]; then
+    note "$earlier_uploads earlier upload(s) in the conditions-DB ledger would count against this scenario's check"
+  fi
+  note "reset-scenario wipes \$NGT_DEV_HOME and the watchers' watermarks (stopping and restarting"
+  note "Airflow around it if it's running)"
+  if confirm "Reset the scratch state first?"; then
+    run "$AIRFLOW_DEMO" reset-scenario || exit 1
+  elif [ -n "$played" ]; then
+    echo "Not playing it again as is -- reset first, or pick a scenario with other run numbers."
+    exit 1
   fi
 fi
 
-# --- 6. summary -----------------------------------------------------------------------------
+# --- 2. play it ---------------------------------------------------------------------------
 
-banner "6. Summary"
-show_tree "$RUN_DATA_DIR" "Everything produced for $CALIBRATION"
-show_assets
+banner "Playing $(basename "$SCENARIO") against Airflow"
+if [ "$AUTO_CONTINUE" = "1" ]; then
+  run "$AIRFLOW_DEMO" play "$SCENARIO" --monitor < /dev/null
+else
+  run "$AIRFLOW_DEMO" play "$SCENARIO" --interactive --monitor
+fi
+status=$?
+
+# --- 3. wrap up ---------------------------------------------------------------------------
+
+banner "Done (scenario_player.py exit status: $status)"
 run "$AIRFLOW_DEMO" status
 run "$AIRFLOW_DEMO" ui
 
 if [ "$KEEP_RUNNING" = "1" ]; then
-  echo; echo "Leaving Airflow running (--keep-running). Stop later with: $AIRFLOW_DEMO stop"; exit 0
+  echo; echo "Leaving Airflow running (--keep-running). Stop later with: $AIRFLOW_DEMO stop"
+  exit "$status"
 fi
 if [ "$AUTO_CONTINUE" = "1" ]; then
   echo; echo "(--yes: pausing the watch DAGs -- this stops the watchers -- and leaving Airflow up)"
-  run "$AIRFLOW_DEMO" pause-watch
-  exit 0
+  run "$AIRFLOW_DEMO" pause-watch > /dev/null
+  exit "$status"
 fi
 
 echo
 if confirm "Pause the watch DAGs again (this stops the 4 AssetWatchers)?"; then
-  run "$AIRFLOW_DEMO" pause-watch
+  run "$AIRFLOW_DEMO" pause-watch > /dev/null
 fi
 if confirm "Tear down Airflow entirely now?"; then
   run "$AIRFLOW_DEMO" stop
 else
   echo "Left running. Stop later with: $AIRFLOW_DEMO stop"
 fi
+exit "$status"
