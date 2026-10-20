@@ -13,14 +13,18 @@
 # $NGT_DEV_HOME (default ./demo-env, i.e. a gitignored directory inside this repo)
 # holds all scratch state -- delete it any time to reset the demo environment.
 #
-# Configuration (overridable via environment variables):
+# Configuration (overridable via environment variables, or persistently via the gitignored
+# scenario-player/local_sim_env.sh -- see local_sim_env.sh.example):
 #   NGT_DEV_HOME              scratch state directory        (default: $REPO_DIR/demo-env)
 #   NGT_LOOP_SLEEP_SECONDS    Step 3/4 poll interval, seconds  (default: 5; production default is 60)
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
+# NGT_DEV_HOME and the rest of the simulator's settings, local_sim_env.sh included -- sourced
+# here rather than only by setup/reset, so every verb agrees on where the scratch state is.
+# shellcheck disable=SC1091
+source "$REPO_DIR/scenario-player/sim_env.sh"
 CALIBRATIONS=(SiStripBad EcalPedestals BeamSpot)
 PLAYER="$REPO_DIR/scenario-player/scenario_player.py"
 
@@ -82,8 +86,6 @@ activate_venv() {
 
 cmd_setup() {
   activate_venv
-  # shellcheck disable=SC1091
-  source "$REPO_DIR/scenario-player/sim_env.sh"
   sim_setup
 
   echo
@@ -104,8 +106,6 @@ cmd_reset() {
     echo
   fi
 
-  # shellcheck disable=SC1091
-  source "$REPO_DIR/scenario-player/sim_env.sh"
   sim_reset
 
   echo "Next: $0 setup"
@@ -135,8 +135,10 @@ start_step() {
   console_log="$(console_log_path "$step" "$calibration")"
   mkdir -p "$(dirname "$console_log")"
   # Plain -c, not -lc: a login shell would re-source the operator's dotfiles,
-  # whose cmsenv/cmsrel functions outrank the fake toolchain in $PATH.
-  tmux new-session -d -s "$session" "bash -c '
+  # whose cmsenv/cmsrel functions outrank the fake toolchain in $PATH. Everything the
+  # loops need comes from env.sh and this command line, so ngt_tmux_new_session (sim_env.sh)
+  # can keep this checkout's settings out of the tmux server's environment.
+  ngt_tmux_new_session -d -s "$session" "bash -c '
     cd \"$REPO_DIR\"
     source \"$REPO_DIR/.venv/bin/activate\"
     source \"$NGT_DEV_HOME/env.sh\"

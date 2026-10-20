@@ -10,14 +10,47 @@
 # the engine-specific script differs.
 #
 # Usage:
-#   source scenario-player/sim_env.sh          -- sets REPO_DIR, NGT_DEV_HOME, and the
-#                                      sim_setup/sim_reset functions; doesn't
-#                                      execute anything on its own.
+#   source scenario-player/sim_env.sh          -- sets REPO_DIR, NGT_DEV_HOME, NGT_INSTANCE, and the
+#                                      sim_setup/sim_reset/ngt_tmux_new_session
+#                                      functions; doesn't execute anything on its own.
 #   ./scenario-player/sim_env.sh setup|reset   -- run directly instead (see
 #                                      sim_setup/sim_reset below for what each does).
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Optional, gitignored per-machine/per-checkout overrides (see local_sim_env.sh.example).
+# Sourced FIRST, seeing only $REPO_DIR, so everything below is `${VAR:-default}` and a
+# plain `VAR=value` in that file wins -- including values derived from it further down,
+# and the environment's. Set NGT_INSTANCE there to rename everything that is derived from it.
+# NGT_SKIP_LOCAL_ENV=1 skips it (and airflow_env.sh's local_airflow_env.sh): tests/conftest.py
+# sets it, since an NGT_DEV_HOME in it would beat a test's own and send a test that spawns
+# this file or live_demo.sh into that real scratch environment.
+# shellcheck disable=SC1091
+if [ -z "${NGT_SKIP_LOCAL_ENV:-}" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/local_sim_env.sh" ]; then
+  source "$(dirname "${BASH_SOURCE[0]}")/local_sim_env.sh"
+fi
+
+# A name for this checkout, unique per $REPO_DIR (basename + a short hash of the full path),
+# that engine adapters use to keep several checkouts' state apart -- see
+# airflow_automation/airflow_demo/airflow_env.sh. NGT_INSTANCE_HASH is the same hash as a
+# number, for deriving per-checkout ports.
+if [ -z "${NGT_INSTANCE_HASH:-}" ]; then
+  NGT_INSTANCE_HASH="$(printf '%s' "$REPO_DIR" | cksum | cut -d' ' -f1)"
+fi
+if [ -z "${NGT_INSTANCE:-}" ]; then
+  _ngt_base="$(basename "$REPO_DIR" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '_')"
+  NGT_INSTANCE="${_ngt_base:0:30}_$(printf '%06x' $((NGT_INSTANCE_HASH % 16777216)))"
+  unset _ngt_base
+fi
+export NGT_INSTANCE NGT_INSTANCE_HASH
+
 export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
+
+# The fake toolchain's identity, written into ngtParameters.jsn and the fake CMSSW area.
+# Fake, unvalidated placeholder values -- nothing in scenario-player/bin/ reads them.
+NGT_SIM_CMSSW_VERSION="${NGT_SIM_CMSSW_VERSION:-CMSSW_16_0_7_patch1}"
+NGT_SIM_SCRAM_ARCH="${NGT_SIM_SCRAM_ARCH:-el8_amd64_gcc13}"
+NGT_SIM_GLOBAL_TAG="${NGT_SIM_GLOBAL_TAG:-160X_dataRun3_ExpressNGT_v0}"
 
 # faults.py (the shared fault-injection vocabulary) sits next to seed.py/
 # scenario_player.py rather than inside an installed package, so put this
@@ -47,7 +80,7 @@ sim_setup() {
   fi
 
   mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin,faults,conddb}
-  mkdir -p "$NGT_DEV_HOME/cmssw_home/CMSSW_16_0_7_patch1/src"
+  mkdir -p "$NGT_DEV_HOME/cmssw_home/$NGT_SIM_CMSSW_VERSION/src"
 
   # -r-less glob copy: skip subdirs (e.g. a stray __pycache__) instead of
   # letting cp's non-zero exit on them silently abort this function under set -e.
@@ -58,9 +91,9 @@ sim_setup() {
 
   cat > "$NGT_DEV_HOME/ngtParameters.jsn" <<JSON
 {
-    "SCRAM_ARCH": "el8_amd64_gcc13",
-    "CMSSW_VERSION": "CMSSW_16_0_7_patch1",
-    "GLOBAL_TAG": "160X_dataRun3_ExpressNGT_v0",
+    "SCRAM_ARCH": "$NGT_SIM_SCRAM_ARCH",
+    "CMSSW_VERSION": "$NGT_SIM_CMSSW_VERSION",
+    "GLOBAL_TAG": "$NGT_SIM_GLOBAL_TAG",
     "DATA_BASE_PATH": "$NGT_DEV_HOME/data",
     "LOG_BASE_PATH": "$NGT_DEV_HOME/logs",
     "COND_AUTH_PATH": "$NGT_DEV_HOME/cond_auth"
@@ -125,6 +158,23 @@ ENV
 sim_reset() {
   echo "Removing $NGT_DEV_HOME"
   rm -rf "$NGT_DEV_HOME"
+}
+
+# ngt_tmux_new_session: `tmux new-session` (same arguments) for an engine adapter's
+# long-running sessions. Whichever tmux client runs first starts the tmux server, and the
+# server hands every shell it ever spawns -- an operator's own new windows included -- that
+# client's environment. Started from an adapter with this checkout's settings exported
+# (NGT_INSTANCE, NGT_DEV_HOME, AIRFLOW_HOME, ...), it would make them the default of every
+# later shell, where another checkout's scripts would take them for their own and act on
+# this checkout's state. So the client runs without any NGT_*/AIRFLOW_* variable, and a
+# session's command has to bring its own: live_demo.sh's source $NGT_DEV_HOME/env.sh,
+# airflow_demo.sh's the settings file its start writes.
+ngt_tmux_new_session() {
+  local v unset_args=()
+  for v in $(compgen -e); do
+    case "$v" in NGT_*|AIRFLOW_*) unset_args+=(-u "$v") ;; esac
+  done
+  env "${unset_args[@]}" tmux new-session "$@"
 }
 
 # Allow running this file directly for setup/reset (neither needs any
