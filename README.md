@@ -403,6 +403,12 @@ python3 scenario-player/seed.py list-faults
 python3 scenario-player/seed.py clear-faults
 ```
 
+`$NGT_DEV_HOME/env.sh` is what points the fakes at those files (`NGT_FAULTS_DIR`,
+`NGT_OMS_STUB_FAULTS_FILE`), so the same faults reach the FSM loops `live_demo.sh` starts. Unlike
+the Airflow tasks, the FSM scripts never retry or check a job's exit code: a faulted `cmsRun`
+simply loses that job's output, and the scenario's `expect:` block reports the missing
+lumisections.
+
 ### Validating the result: did the scenario actually pass?
 
 Playing a scenario shows you the pipeline *moving*; it doesn't tell you whether the pipeline did

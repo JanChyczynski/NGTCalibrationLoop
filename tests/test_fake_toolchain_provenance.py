@@ -158,6 +158,56 @@ def test_step2_derives_lumisections_from_the_raw_filenames(chain):
     assert manifest["lumisections"] == [51, 52]
 
 
+@pytest.mark.parametrize(
+    "job_dir_name, step",
+    [
+        ("alcaPromptJob_abc1234567", "step3"),  # ngt_calibration_loop's content-hashed job dirs
+        ("alcaPromptJob000", "step3"),  # NGTLoopStep3/4.py's numbered ones
+        ("harvestJob_def7654321", "step4"),
+        ("harvestJob001", "step4"),
+    ],
+)
+def test_the_step_is_read_off_either_job_dir_naming(chain, job_dir_name, step):
+    job_dir = chain / job_dir_name
+    job_dir.mkdir()
+    raw = _seed_raw(chain, 398600, [51])
+    _cms_job(job_dir, step_arg="RAW2DIGI,RECO", inputs=raw, python_filename="s.py", fileout="out.root")
+
+    assert conddb.read_provenance(job_dir / "out.root")["step"] == step
+
+
+def test_a_step_scoped_cmsrun_fault_fires_in_an_fsm_job_dir(chain, tmp_path):
+    """The live demo of the FSM loops arms the same faults as the Airflow one, so a
+    `step: step3` fault has to recognise NGTLoopStep3.py's alcaPromptJob000 too."""
+    faults_dir = tmp_path / "faults"
+    faults_dir.mkdir()
+    (faults_dir / "cmsrun.json").write_text(
+        json.dumps(
+            [{"mode": "exit_code", "exit_code": 139, "calibration": "EcalPedestals", "step": "step3", "times_remaining": 1}]
+        ),
+        encoding="utf-8",
+    )
+    job_dir = chain / "alcaPromptJob000"
+    job_dir.mkdir()
+    raw = _seed_raw(chain, 398600, [51])
+    _run("cmsDriver.py", ["expressStep3", "-s", "RAW2DIGI,RECO", "--filein", ",".join(raw),
+                          "--fileout", "file:out.root", "--python_filename", "s.py"], job_dir)
+
+    result = subprocess.run(
+        [sys.executable, str(FAKE_BIN / "cmsRun"), "s.py"],
+        cwd=str(job_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+        env=dict(os.environ, NGT_FAULTS_DIR=str(faults_dir)),
+    )
+
+    assert result.returncode == 139
+    assert "Begin Fatal Exception" in result.stderr
+    assert not (job_dir / "out.root").exists()
+    assert json.loads((faults_dir / "cmsrun.json").read_text(encoding="utf-8")) == []  # consumed
+
+
 def test_lumisections_survive_all_three_steps(chain):
     rows = _full_chain(chain, [51, 52, 53])
 

@@ -27,7 +27,8 @@ still-armed, scope-matching simulated failure, and if one exists, prints a
 realistic condDB-upload-style error to stderr and exits with the configured
 code instead. Scope (calibration/run) is derived from the current working
 directory -- see _scope_from_cwd -- since step4.py's upload_conditions()
-always runs this job with cwd set to its own harvestJob_* working directory.
+always runs this job with cwd set to its own harvestJob_* working directory
+(NGTLoopStep4.py's HARVESTING.sh runs it in harvestJob<NNN>).
 """
 import fcntl
 import json

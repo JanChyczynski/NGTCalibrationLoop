@@ -75,7 +75,14 @@ export NGT_PARAMETERS_PATH="$NGT_DEV_HOME/ngtParameters.jsn"
 export NGT_CALIBRATION_YAML_DIR="$NGT_DEV_HOME/calibrationYAML"
 export NGT_OMS_STUB_RUNS_FILE="$NGT_DEV_HOME/oms_runs.json"
 export PATH="$NGT_DEV_HOME/bin:\$PATH"
-export PYTHONPATH="$REPO_DIR/tests/stubs:\${PYTHONPATH:-}"
+# scenario-player/ for the fake omsapi's live fault path, which imports faults.py.
+export PYTHONPATH="$REPO_DIR/tests/stubs:$REPO_DIR/scenario-player:\${PYTHONPATH:-}"
+
+# Where seed.py's arm_fault() leaves armed faults for bin/cmsRun,
+# bin/uploadConditions.py and the fake omsapi to consume -- without these the
+# fakes never look, and a scenario's faults: entries are silently inert.
+export NGT_FAULTS_DIR="$NGT_DEV_HOME/faults"
+export NGT_OMS_STUB_FAULTS_FILE="$NGT_DEV_HOME/faults/oms.json"
 
 # A real CMSSW environment provides cmsenv/cmsrel as shell *functions*, and bash
 # resolves a function before it searches \$PATH -- an exported one survives into

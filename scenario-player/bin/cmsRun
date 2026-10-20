@@ -25,8 +25,9 @@ code instead -- realistic enough that debugging it via the job's stdout/
 stderr log (or, for Step 4's unguarded `cmsRun` call, Airflow's own captured
 task log) is a reasonable stand-in for debugging a genuine CMSSW crash.
 Scope (calibration/run/step) is derived from the current working directory --
-see _scope_from_cwd -- since step2.py/step3.py/step4.py always run this job
-with cwd set to their own <calibration>/run<N>[/<jobDir>] working directory.
+see _scope_from_cwd -- since step2.py/step3.py/step4.py (and NGTLoopStep2/3/4.py)
+always run this job with cwd set to their own <calibration>/run<N>[/<jobDir>]
+working directory.
 """
 import fcntl
 import json
@@ -41,10 +42,11 @@ import _fakeprov  # noqa: E402  -- sibling module, see its docstring for why not
 
 def _scope_from_cwd():
     """{calibration, run, step} derived from cwd: step2 runs directly in
-    <data_base_path>/<calibration>/run<N>/; step3/step4 nest a content-hashed
-    job dir (alcaPromptJob_*/harvestJob_*) one level deeper -- see
+    <data_base_path>/<calibration>/run<N>/; step3/step4 nest a job dir one level
+    deeper -- content-hashed (alcaPromptJob_<hash>/harvestJob_<hash>, see
     ngt_calibration_loop/step2.py's working_dir and step3.py/step4.py's
-    _job_dir_name."""
+    _job_dir_name) or, for the FSM scripts, numbered (alcaPromptJob000/
+    harvestJob000, NGTLoopStep3/4.py's job counter)."""
     parts = os.getcwd().replace("\\", "/").rstrip("/").split("/")
     scope = {"calibration": None, "run": None, "step": None}
     for i, part in enumerate(parts):
@@ -57,9 +59,9 @@ def _scope_from_cwd():
     basename = parts[-1] if parts else ""
     if re.match(r"^run\d+$", basename):
         scope["step"] = "step2"
-    elif basename.startswith("alcaPromptJob_"):
+    elif basename.startswith("alcaPromptJob"):
         scope["step"] = "step3"
-    elif basename.startswith("harvestJob_"):
+    elif basename.startswith("harvestJob"):
         scope["step"] = "step4"
     return scope
 
