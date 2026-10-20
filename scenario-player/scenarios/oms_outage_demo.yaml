@@ -1,0 +1,57 @@
+# OMS unreachable just as a run starts (see scenario-player/faults.py and
+# scenario-player/scenario_player.py's module docstring for the `faults:` syntax). The queries
+# that look for a new run fail until OMS answers again, and the point of this scenario is that
+# the run is still found, primed and processed once it does.
+#
+# The fault is unscoped (no `run:`): a new-run query searches *for* a run, so it never filters by
+# run number and a run-scoped fault could never reach it. It is armed a moment before the run
+# starts, while nothing else is talking to OMS, so the new-run queries are what consume it:
+# Airflow's run watcher (airflow_automation/airflow_dags/triggers.py's RunWatcherTrigger, polling
+# every NGT_FILE_POLL_SECONDS -- 5s in the demo, so times: 4 is an outage of about 20s) or the FSM
+# loops' Step 2 (NewRunAvailable, once a second).
+#
+# What to expect while watching it play:
+#   Airflow -- the triggerer's console log shows one warning, "OMS query for new runs failed --
+#            polling on every 5.0s until it answers", with the ConnectionError's traceback, then
+#            "OMS answered again after 4 failed poll(s)" and "New run 900021 -> updating Asset
+#            ngt://runs". Before the watcher caught this, every failed query ended the trigger
+#            and the triggerer restarted it at once: a restart loop with two error lines a try.
+#   FSM   -- Step 2's log shows "Error querying OMS API: ..." a few times, then latches the run.
+# Either way the run then goes through Steps 2-4 as in basic_ecal_pedestals.yaml.
+#
+# Play with (Airflow: against a live `airflow_demo.sh setup && start` with ngt_watch_* unpaused):
+#   python3 scenario-player/scenario_player.py scenario-player/scenarios/oms_outage_demo.yaml
+#   ./scenario-player/live_demo.sh play scenario-player/scenarios/oms_outage_demo.yaml
+#
+# Run number 900021 is deliberately unused by any other scenario-player/scenarios/*.yaml file, so
+# this scenario's Airflow-UI/log output is never confused with another one's.
+runs:
+  - calibrations: [EcalPedestals]
+    run: 900021
+    start_offset: 1
+    lumisections:
+      - {ls: 1, after: 0}
+      - {ls: 2, after: 20}
+      - {ls: 3, after: 20}
+    end_after: 30
+
+faults:
+  - target: oms
+    mode: connection_error
+    at: 0
+    times: 4
+
+# Starting during the outage must make no difference: the run ends with one payload covering
+# exactly LS 1-3.
+#
+# TODO: loose check, needs more attention. `allow_duplicates` and `allow_extra.after` are on
+# only because the FSM loops (live_demo.sh play) upload each run's final payload once more when
+# the run ends; with them on, this block also lets through an Airflow DAG re-firing after the run
+# ended, or any other repeated upload. See README.md's "Validating the result".
+expect:
+  settle_timeout: 900
+  quiet_for: 60
+  allow_duplicates: true
+  allow_extra: {before: true, after: true}
+  payloads:
+    - {calibration: EcalPedestals, run: 900021, lumisections: 1-3}

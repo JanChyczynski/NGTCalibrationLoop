@@ -410,7 +410,8 @@ separate OS process from whatever is running the loops -- arms it by writing JSO
 `$NGT_DEV_HOME/faults/<target>.json`, which the fake `omsapi`, `bin/cmsRun` and
 `bin/uploadConditions.py` poll and consume. From a scenario file, a top-level `faults:` list arms
 faults at scheduled points on the same timeline (see
-`scenario-player/scenarios/fault_injection_demo.yaml`); by hand:
+`scenario-player/scenarios/fault_injection_demo.yaml`, or `oms_outage_demo.yaml`, which takes OMS
+down just as a run starts); by hand:
 
 ```bash
 python3 scenario-player/seed.py arm-fault --target oms --mode connection_error --times 2
