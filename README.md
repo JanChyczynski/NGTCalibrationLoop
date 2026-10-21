@@ -38,7 +38,7 @@ Automatic Database Upload
 ## tmux quick start
 To understand exactly what goes into each step, please refer at the `Setting up and running` section. This section assumes, you just want to relaunch scripts after new developments that you want to run on and no tmux sessions running anymore (`tmux kill-server`). Make sure you are in the correct directory and that `cmsenv` is set. To launch all three tmux sessions at the same time, it just needs the input argument of which calibration one wants to launch, so simply:
 ```
-./tmux_launch.sh -c SiStripBad # or -c Beamspot or -c EcalPedestals
+./fsm-loops/tmux_launch.sh -c SiStripBad # or -c Beamspot or -c EcalPedestals
 ```
 This will launch the tmux sessions and make the respective script run inside of it. 
 
@@ -72,7 +72,7 @@ git clone ssh://git@gitlab.cern.ch:7999/cmsoms/oms-api-client.git
 cp -r oms-api-client/omsapi .
 mkdir -p /tmp/ngt/
 chmod g+ws /tmp/ngt/
-python3 NGTLoopStep2.py -c EcalPedestals  # or SiStripBad
+python3 fsm-loops/NGTLoopStep2.py -c EcalPedestals  # or SiStripBad
 ```
 then quit the tmux session either via keyboard combination or simply closing the terminal. 
 
@@ -84,7 +84,7 @@ source /opt/offline/cmsset_default.sh
 cmsrel CMSSW_16_0_3
 cd CMSSW_16_0_3/src/NGTCalibrationLoop
 cmsenv
-python3 NGTLoopStep3.py -c EcalPedestals  # or SiStripBad
+python3 fsm-loops/NGTLoopStep3.py -c EcalPedestals  # or SiStripBad
 tmux detach
 ```
 For step 4, we simply do:
@@ -94,7 +94,7 @@ tmux new -s CalibrationLoop4 # make sure to start the tmux session from the saku
 source /opt/offline/cmsset_default.sh
 cd CMSSW_16_0_3/src/NGTCalibrationLoop
 cmsenv
-python3 NGTLoopStep4.py -c EcalPedestals # or SiStripBad
+python3 fsm-loops/NGTLoopStep4.py -c EcalPedestals # or SiStripBad
 tmux detach
 ```
 

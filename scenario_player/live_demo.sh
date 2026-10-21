@@ -141,7 +141,7 @@ start_step() {
     source \"$REPO_DIR/.venv/bin/activate\"
     source \"$NGT_DEV_HOME/env.sh\"
     export NGT_LOOP_SLEEP_SECONDS=${NGT_LOOP_SLEEP_SECONDS:-5}
-    python NGTLoopStep${step}.py -c \"$calibration\" 2>&1 | tee \"$console_log\"
+    python fsm-loops/NGTLoopStep${step}.py -c \"$calibration\" 2>&1 | tee \"$console_log\"
     echo \"(process exited -- press enter to close)\"
     read
   '"

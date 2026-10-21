@@ -27,11 +27,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TESTS_DIR = Path(__file__).resolve().parent
 STUBS_DIR = TESTS_DIR / "stubs"
+FSM_LOOPS_DIR = REPO_ROOT / "fsm-loops"
 
 # Order matters: the stub omsapi must be found before any real one, and the repo
-# root must be importable so `import NGTLoopStep2` etc. works regardless of the
-# directory pytest was invoked from.
-for path in (str(TESTS_DIR), str(STUBS_DIR), str(REPO_ROOT)):
+# loops (fsm-loops/) must be importable so `import NGTLoopStep2` etc. works regardless of
+# the directory pytest was invoked from.
+for path in (str(TESTS_DIR), str(STUBS_DIR), str(FSM_LOOPS_DIR)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
