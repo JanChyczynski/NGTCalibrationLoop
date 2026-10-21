@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 LIVE_DEMO = REPO_ROOT / "scenario_player" / "live_demo.sh"
 SCENARIO = REPO_ROOT / "scenario_player" / "scenarios" / "basic_ecal_pedestals.yaml"
 CALIBRATION = "EcalPedestals"
