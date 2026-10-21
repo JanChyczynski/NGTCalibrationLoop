@@ -17,6 +17,6 @@ jobs:
       - name: Create the venv live_demo.sh expects
         run: |
           python -m venv .venv
-          .venv/bin/pip install -r requirements-dev.txt
+          .venv/bin/pip install -r requirements_dev.txt
       - name: Play the basic EcalPedestals scenario and check its results
         run: .venv/bin/pytest -m scenario -v

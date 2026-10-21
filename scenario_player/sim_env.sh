@@ -10,18 +10,18 @@
 # the engine-specific script differs.
 #
 # Usage:
-#   source scenario-player/sim_env.sh          -- sets REPO_DIR, NGT_DEV_HOME, and the
+#   source scenario_player/sim_env.sh          -- sets REPO_DIR, NGT_DEV_HOME, and the
 #                                      sim_setup/sim_reset functions; doesn't
 #                                      execute anything on its own.
-#   ./scenario-player/sim_env.sh setup|reset   -- run directly instead (see
+#   ./scenario_player/sim_env.sh setup|reset   -- run directly instead (see
 #                                      sim_setup/sim_reset below for what each does).
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
 
 # sim_setup: create/refresh everything under $NGT_DEV_HOME that any engine
-# adapter needs -- the fake scenario-player/bin/ toolchain, env.sh, ngtParameters.jsn,
-# and (via scenario-player/seed.py, itself fully engine-agnostic) the per-calibration
+# adapter needs -- the fake scenario_player/bin/ toolchain, env.sh, ngtParameters.jsn,
+# and (via scenario_player/seed.py, itself fully engine-agnostic) the per-calibration
 # fake EOS layout and an empty fake OMS runs file. Safe to re-run.
 #
 # Needs an active venv (any one) for its `pip install -e tests/stubs` step
@@ -43,7 +43,7 @@ sim_setup() {
 
   # -r-less glob copy: skip subdirs (e.g. a stray __pycache__) instead of
   # letting cp's non-zero exit on them silently abort this function under set -e.
-  for f in "$REPO_DIR"/scenario-player/bin/*; do
+  for f in "$REPO_DIR"/scenario_player/bin/*; do
     [ -f "$f" ] && cp "$f" "$NGT_DEV_HOME/bin/"
   done
   chmod +x "$NGT_DEV_HOME"/bin/*
@@ -77,7 +77,7 @@ export PYTHONPATH="$REPO_DIR/tests/stubs:\${PYTHONPATH:-}"
 unset -f cmsenv cmsrel cmsDriver.py cmsRun uploadConditions.py 2>/dev/null || true
 ENV
 
-  python3 "$REPO_DIR/scenario-player/seed.py" setup
+  python3 "$REPO_DIR/scenario_player/seed.py" setup
 
   # Makes the fake `omsapi` package importable by whatever Python process is
   # actually running the engine's workers. Harmless no-op for an engine that

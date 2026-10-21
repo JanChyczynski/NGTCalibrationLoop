@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Plays back a scripted timeline of LHC runs/lumisections against the fake
-OMS/EOS state scenario-player/seed.py manages -- the "simulate a live run" half of the
+OMS/EOS state scenario_player/seed.py manages -- the "simulate a live run" half of the
 live-test setup. It doesn't know or care what, if anything, is watching
 $NGT_DEV_HOME.
 
@@ -27,12 +27,12 @@ reason), but its lumisections can feed *multiple* calibrations simultaneously,
 since one run's RAW data underlies every calibration stream. Listing several
 calibrations on one run plays the same start/LS-arrival/end timeline once per
 calibration (sharing the one run number, each getting its own fake EOS files
--- see scenario-player/scenarios/concurrent_multi_calibration.yaml for a worked example),
+-- see scenario_player/scenarios/concurrent_multi_calibration.yaml for a worked example),
 which is the physically sensible way to model "multiple calibrations
 processing concurrently" -- not two different run numbers overlapping in
-time. See scenario-player/scenarios/*.yaml for more worked examples.
+time. See scenario_player/scenarios/*.yaml for more worked examples.
 
-This script only calls scenario-player/seed.py's library functions
+This script only calls scenario_player/seed.py's library functions
 (seed_run/add_ls/end_run) -- it has no orchestration-engine import at all.
 """
 # see def parse_args below to see available commands
@@ -50,7 +50,7 @@ from typing import Optional
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import seed  # noqa: E402  -- scenario-player/seed.py, reused as a library (engine-agnostic)
+import seed  # noqa: E402  -- scenario_player/seed.py, reused as a library (engine-agnostic)
 
 MONITOR_INTERVAL_SECONDS = 2.0  # fast enough to feel live, slow enough to stay quiet
 
@@ -194,7 +194,7 @@ def build_timeline(scenario):
     --ls option. This is a one-line-simpler timeline builder at the cost of
     one extra (still correctly-ordered) fake-OMS write per calibration; the
     resulting state is identical. end_run fires exactly once per run spec
-    (not once per calibration) since scenario-player/seed.py's end-run isn't
+    (not once per calibration) since scenario_player/seed.py's end-run isn't
     calibration-specific -- it just flips one shared OMS record.
     """
     _check_no_overlapping_runs(scenario)
@@ -229,7 +229,7 @@ def show_timeline(events, log=_emit):
 
 def _prompt_text(number, total, instant):
     """The --interactive prompt for one instant: what is about to happen, as the
-    equivalent scenario-player/seed.py command lines, and how far through the scenario
+    equivalent scenario_player/seed.py command lines, and how far through the scenario
     we are."""
     return "\n".join(
         [f"[{number}/{total}] next, scheduled +{instant[0].at:.1f}s -- {len(instant)} event(s):"]
@@ -272,7 +272,7 @@ def play(events, speed=1.0, log=_emit, prompt=None):
 class DataDirMonitor:
     """Reports files/directories appearing under the demo-env data directory while a
     scenario plays -- i.e. whatever the loops under test are producing. This player writes
-    none of it (it only touches the fake OMS/EOS state scenario-player/seed.py owns), so
+    none of it (it only touches the fake OMS/EOS state scenario_player/seed.py owns), so
     every path reported here is something NGTLoopStep2/3/4 did in reaction.
 
     Creations only: a path is reported the first time a scan sees it, never again for

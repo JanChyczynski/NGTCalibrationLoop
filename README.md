@@ -199,7 +199,7 @@ To set up a local environment and run the test suite:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt
+pip install -r requirements_dev.txt
 pytest
 ```
 
@@ -218,17 +218,17 @@ No network access, CMSSW, or CERN-internal hosts are required to run the suite.
 
 ## Running a live demo of the loops (no CERN infra needed)
 
-For watching the actual FSM processes run -- not just pytest -- `scenario-player/live_demo.sh`
+For watching the actual FSM processes run -- not just pytest -- `scenario_player/live_demo.sh`
 launches real `NGTLoopStep2/3/4.py` processes (one per tmux session) against a fake
-OMS/EOS/CMSSW toolchain in `scenario-player/bin/` (fake `cmsDriver.py`, `cmsRun`, `edmFileUtil`,
+OMS/EOS/CMSSW toolchain in `scenario_player/bin/` (fake `cmsDriver.py`, `cmsRun`, `edmFileUtil`,
 `xrdfs`, `cmsrel`, `cmsenv`, `uploadConditions.py`). Everything runs for real --
 real state transitions, real generated job scripts, dummy output files flowing from
 Step 2 through Step 3 to a fake Step 4 upload -- entirely offline.
 
 Quick start example:
 ```bash
-./scenario-player/live_demo.sh play scenario-player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
-./scenario-player/live_demo.sh stop-all EcalPedestals
+./scenario_player/live_demo.sh play scenario_player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
+./scenario_player/live_demo.sh stop-all EcalPedestals
 ```
 
 `--interactive`
@@ -241,22 +241,22 @@ which those are), then passes everything after it straight to `scenario_player.p
 [Scripting a timed sequence of runs/lumisections](#scripting-a-timed-sequence-of-runslumisections)
 below for the scenario format and the rest of the flags.
 
-Run `./scenario-player/live_demo.sh` with no arguments for the full command list. All state
+Run `./scenario_player/live_demo.sh` with no arguments for the full command list. All state
 lives under `$NGT_DEV_HOME` (default `./demo-env`, a gitignored directory inside
-this repo); `./scenario-player/live_demo.sh reset` deletes it, which resets the demo
+this repo); `./scenario_player/live_demo.sh reset` deletes it, which resets the demo
 environment completely.
 
 You can run the demo manually without a scripted scenario, e.g.:
 
 ```bash
-./scenario-player/live_demo.sh setup                                  # create ./demo-env scratch env
-./scenario-player/live_demo.sh start-all EcalPedestals                 # launch all 3 steps in tmux
-./scenario-player/live_demo.sh seed-run EcalPedestals 398600 --ls 51 52  # latch a fake live run
+./scenario_player/live_demo.sh setup                                  # create ./demo-env scratch env
+./scenario_player/live_demo.sh start-all EcalPedestals                 # launch all 3 steps in tmux
+./scenario_player/live_demo.sh seed-run EcalPedestals 398600 --ls 51 52  # latch a fake live run
 tmux attach -t NGTDemo2_EcalPedestals                       # watch it react (Ctrl-b d to detach)
-./scenario-player/live_demo.sh add-ls EcalPedestals 398600 53           # simulate a new lumisection arriving
-./scenario-player/live_demo.sh end-run 398600                           # simulate the run ending
-./scenario-player/live_demo.sh status                                   # list running sessions
-./scenario-player/live_demo.sh stop-all EcalPedestals                   # tear down
+./scenario_player/live_demo.sh add-ls EcalPedestals 398600 53           # simulate a new lumisection arriving
+./scenario_player/live_demo.sh end-run 398600                           # simulate the run ending
+./scenario_player/live_demo.sh status                                   # list running sessions
+./scenario_player/live_demo.sh stop-all EcalPedestals                   # tear down
 ```
 
 Two settings are overridable via environment variables:
@@ -266,24 +266,24 @@ Two settings are overridable via environment variables:
 | `NGT_DEV_HOME`             | `./demo-env`                         | scratch state directory           |
 | `NGT_LOOP_SLEEP_SECONDS`   | `5` (production default: `60`)       | Step 3/4 poll interval, seconds   |
 
-e.g. `NGT_DEV_HOME=/tmp/ngt-demo ./scenario-player/live_demo.sh setup`. `NGT_DEV_HOME` is read
+e.g. `NGT_DEV_HOME=/tmp/ngt-demo ./scenario_player/live_demo.sh setup`. `NGT_DEV_HOME` is read
 at `setup` time and baked into `$NGT_DEV_HOME/ngtParameters.jsn`, so re-run `setup`
 after changing it. `NGT_LOOP_SLEEP_SECONDS` is read fresh each time a loop is
 started (`start2` / `start3` / `start4` / `start-all`).
 
-## The offline simulator (`scenario-player/`)
+## The offline simulator (`scenario_player/`)
 
-`scenario-player/` holds everything needed to simulate a live run without CERN infrastructure:
+`scenario_player/` holds everything needed to simulate a live run without CERN infrastructure:
 `sim_env.sh` (scratch environment + fake toolchain bootstrap), `seed.py` and `scenario_player.py`
 (driving/replaying fake runs, with `scenarios/*.yaml`) and `bin/` (the fake
 `cmsRun`/`cmsDriver.py`/`edmFileUtil`/`xrdfs`/... toolchain). None of it imports or depends on how
 `NGTLoopStep2/3/4.py` are launched, so it can be pointed at the same `$NGT_DEV_HOME` regardless.
-It is not a Python package (hence the hyphen): `seed.py` and `scenario_player.py` are top-level
+It is not a Python package (no `__init__.py`): `seed.py` and `scenario_player.py` are top-level
 modules found via `sys.path` (`tests/conftest.py`, and `PYTHONPATH` from `sim_env.sh`).
 
 ### Scripting a timed sequence of runs/lumisections
 
-`scenario-player/scenario_player.py` plays
+`scenario_player/scenario_player.py` plays
 back a whole timeline from a declarative YAML file, e.g.:
 
 ```yaml
@@ -300,28 +300,28 @@ runs:
 A scenario lists one or more runs with a start offset and a sequence of lumisections separated
 by delays; events from multiple runs merge into one global timeline. Runs may not overlap (only
 one CMS-wide DAQ run is active at once), but a run's `calibrations` list can share its
-lumisections across several calibrations at once -- see `scenario-player/scenario_player.py`'s
-module docstring for the full format and `scenario-player/scenarios/*.yaml` for worked examples.
+lumisections across several calibrations at once -- see `scenario_player/scenario_player.py`'s
+module docstring for the full format and `scenario_player/scenarios/*.yaml` for worked examples.
 Run numbers must be exactly six digits: the fake `edmFileUtil` parses `run<RUN6DIGIT>_ls<LS>`
 names and skips anything else.
 
 Example executions:
 
 ```bash
-python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml            # real-time
-python3 scenario-player/scenario_player.py scenario-player/scenarios/concurrent_multi_calibration.yaml --speed 5
-python3 scenario-player/scenario_player.py scenario-player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
+python3 scenario_player/scenario_player.py scenario_player/scenarios/basic_ecal_pedestals.yaml            # real-time
+python3 scenario_player/scenario_player.py scenario_player/scenarios/concurrent_multi_calibration.yaml --speed 5
+python3 scenario_player/scenario_player.py scenario_player/scenarios/basic_ecal_pedestals.yaml --interactive --monitor
 ```
 
-`./scenario-player/live_demo.sh play <scenario.yaml> [options]` is the same thing with the
+`./scenario_player/live_demo.sh play <scenario.yaml> [options]` is the same thing with the
 venv activated, the scratch environment set up and the scenario's loops started for you --
 every argument after `play` is passed straight through.
 
-The player itself starts no loops -- `./scenario-player/live_demo.sh play` does that for you,
+The player itself starts no loops -- `./scenario_player/live_demo.sh play` does that for you,
 and `setup` / `start-all <calibration>` are still there to drive by hand. `--monitor` reports
 *new* paths only, so a `demo-env` left over from an earlier scenario won't flood the output,
 and file *contents* are still yours to look at (`tail` a `stdout.log`, or
-`./scenario-player/live_demo.sh logs <calibration> 2`).
+`./scenario_player/live_demo.sh logs <calibration> 2`).
 
 This calls `seed.py`'s functions directly, nothing more -- the same engine-agnostic layer
 `seed.py` itself is.

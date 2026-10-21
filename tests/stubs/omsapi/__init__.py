@@ -11,7 +11,7 @@ authentication, and no real REST semantics beyond simple equality-filter/sort/pa
 
 Two ways to feed it data:
 - configure_runs() / reset() -- used by the pytest suite, in-memory only.
-- the NGT_OMS_STUB_RUNS_FILE env var -- used by scenario-player/live_demo.sh, points at a JSON file
+- the NGT_OMS_STUB_RUNS_FILE env var -- used by scenario_player/live_demo.sh, points at a JSON file
   containing a list of run dicts that is re-read on every query, so a live NGTLoopStep2.py
   process picks up edits to the file (e.g. "end" a run) without needing a restart.
 """
@@ -50,7 +50,7 @@ def reset():
 
 def _current_runs():
     """The runs to query against: live-reloaded from NGT_OMS_STUB_RUNS_FILE if set
-    (scenario-player/live_demo.sh usage), otherwise the in-memory list from configure_runs()
+    (scenario_player/live_demo.sh usage), otherwise the in-memory list from configure_runs()
     (pytest usage)."""
     runs_file = os.environ.get("NGT_OMS_STUB_RUNS_FILE")
     if not runs_file:

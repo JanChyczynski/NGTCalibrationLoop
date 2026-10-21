@@ -1,7 +1,7 @@
 """
-Tests for scenario-player/scenario_player.py -- the timed, engine-agnostic run/lumisection
-playback tool (see scenario-player/scenarios/*.yaml for example scenario files). These
-tests never touch $NGT_DEV_HOME or the filesystem: scenario-player/seed.py's actual
+Tests for scenario_player/scenario_player.py -- the timed, engine-agnostic run/lumisection
+playback tool (see scenario_player/scenarios/*.yaml for example scenario files). These
+tests never touch $NGT_DEV_HOME or the filesystem: scenario_player/seed.py's actual
 seed_run/add_ls/end_run are monkeypatched out so we can assert purely on
 event ordering/timing and on what scenario_player would have called.
 """
@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCENARIO_PLAYER_DIR = REPO_ROOT / "scenario-player"
+SCENARIO_PLAYER_DIR = REPO_ROOT / "scenario_player"
 if str(SCENARIO_PLAYER_DIR) not in sys.path:
     sys.path.insert(0, str(SCENARIO_PLAYER_DIR))
 
@@ -20,7 +20,7 @@ import scenario_player  # noqa: E402
 
 
 def _record_seed_calls(monkeypatch):
-    """Replace scenario-player/seed.py's three entry points with recorders; returns the
+    """Replace scenario_player/seed.py's three entry points with recorders; returns the
     list they append to, so a test can assert purely on what would have been called."""
     calls = []
     for name in ("seed_run", "add_ls", "end_run"):
@@ -108,7 +108,7 @@ def test_build_timeline_one_run_multiple_calibrations_shares_one_run_number():
     end_events = [e for e in events if e.kind == "end_run"]
     assert start_calibrations == {"EcalPedestals", "SiStripBad"}
     assert add_ls_calibrations == {"EcalPedestals", "SiStripBad"}
-    # end-run isn't calibration-specific (scenario-player/seed.py's end_run takes no
+    # end-run isn't calibration-specific (scenario_player/seed.py's end_run takes no
     # calibration argument -- it flips one shared OMS record) -- fired once
     # per run spec, not once per listed calibration.
     assert len(end_events) == 1
@@ -485,7 +485,7 @@ def test_monitor_stop_reports_what_appeared_during_the_last_interval(tmp_path):
 def test_scenario_files_in_repo_parse_and_build_a_nonempty_timeline():
     scenarios_dir = SCENARIO_PLAYER_DIR / "scenarios"
     yaml_files = list(scenarios_dir.glob("*.yaml"))
-    assert yaml_files, "expected at least one example scenario under scenario-player/scenarios/"
+    assert yaml_files, "expected at least one example scenario under scenario_player/scenarios/"
     for path in yaml_files:
         scenario = yaml.safe_load(path.read_text(encoding="utf-8"))
         events = scenario_player.build_timeline(scenario)

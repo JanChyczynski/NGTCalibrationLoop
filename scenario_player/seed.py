@@ -6,7 +6,7 @@ drive a live calibration workflow.
 
 The one-shot CLI verbs below (seed-run/add-ls/end-run/list-runs) are also
 exposed as plain importable functions (seed_run/add_ls/end_run) -- that's what
-scenario-player/scenario_player.py calls directly to play back a timed sequence of runs/
+scenario_player/scenario_player.py calls directly to play back a timed sequence of runs/
 lumisections instead of firing single commands by hand. Both ways of driving
 this file are engine-agnostic: neither knows or cares whether anything is
 watching $NGT_DEV_HOME.
@@ -60,7 +60,7 @@ def _run_eos_dir(calibration, run_number):
 
 def _touch_ls_file(eos_dir, run_number, ls_number):
     path = eos_dir / f"run{run_number}_ls{ls_number:04d}.root"
-    path.write_bytes(b"(FAKE) raw data placeholder -- see scenario-player/bin/edmFileUtil\n")
+    path.write_bytes(b"(FAKE) raw data placeholder -- see scenario_player/bin/edmFileUtil\n")
     return path
 
 

@@ -14,7 +14,7 @@ pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="needs a POSIX bash"
 )
 
-# The line env.sh carries (see sim_setup in scenario-player/sim_env.sh).
+# The line env.sh carries (see sim_setup in scenario_player/sim_env.sh).
 UNSET_LINE = "unset -f cmsenv cmsrel cmsDriver.py cmsRun uploadConditions.py 2>/dev/null || true"
 
 
@@ -78,5 +78,5 @@ def test_sim_env_generates_the_unset_line():
     """Ties UNSET_LINE above to what sim_setup actually writes, so changing one
     without the other fails instead of leaving the tests passing on a line the
     real harness no longer emits."""
-    sim_env = Path(__file__).resolve().parent.parent / "scenario-player" / "sim_env.sh"
+    sim_env = Path(__file__).resolve().parent.parent / "scenario_player" / "sim_env.sh"
     assert UNSET_LINE in sim_env.read_text(encoding="utf-8")

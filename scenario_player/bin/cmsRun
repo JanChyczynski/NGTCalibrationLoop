@@ -2,7 +2,7 @@
 """
 (FAKE) stand-in for CMSSW's `cmsRun`.
 
-Reads the `# FAKE_OUTPUTS=...` marker scenario-player/bin/cmsDriver.py wrote into the given
+Reads the `# FAKE_OUTPUTS=...` marker scenario_player/bin/cmsDriver.py wrote into the given
 python config and creates each listed output file in the current directory, so
 the calling bash script's `if cmsRun ...; then mv/touch ...` success path has
 real files to work with.
@@ -33,7 +33,7 @@ def main():
 
     for output in outputs:
         with open(output, "wb") as f:
-            f.write(b"(FAKE) output produced by scenario-player/bin/cmsRun -- not real physics data\n")
+            f.write(b"(FAKE) output produced by scenario_player/bin/cmsRun -- not real physics data\n")
 
     print(f"(FAKE) cmsRun: ran {python_filename}, wrote {outputs}")
 

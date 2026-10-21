@@ -1,6 +1,6 @@
 #!/bin/bash
 # Self-contained "live" runner for NGTLoopStep2/3/4.py against a fake OMS/EOS/CMSSW
-# toolchain (see scenario-player/bin/), so the FSM loops can be watched producing actual
+# toolchain (see scenario_player/bin/), so the FSM loops can be watched producing actual
 # state transitions, job scripts, and output files -- without any CERN network
 # access, real CMSSW, or the real omsapi client.
 #
@@ -22,7 +22,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
 CALIBRATIONS=(SiStripBad EcalPedestals BeamSpot)
-PLAYER="$REPO_DIR/scenario-player/scenario_player.py"
+PLAYER="$REPO_DIR/scenario_player/scenario_player.py"
 
 usage() {
   cat <<USAGE
@@ -73,7 +73,7 @@ require_calibration() {
 
 activate_venv() {
   if [ ! -f "$REPO_DIR/.venv/bin/activate" ]; then
-    echo "No venv at $REPO_DIR/.venv -- run: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-dev.txt" >&2
+    echo "No venv at $REPO_DIR/.venv -- run: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements_dev.txt" >&2
     exit 1
   fi
   # shellcheck disable=SC1091
@@ -83,7 +83,7 @@ activate_venv() {
 cmd_setup() {
   activate_venv
   # shellcheck disable=SC1091
-  source "$REPO_DIR/scenario-player/sim_env.sh"
+  source "$REPO_DIR/scenario_player/sim_env.sh"
   sim_setup
 
   echo
@@ -105,7 +105,7 @@ cmd_reset() {
   fi
 
   # shellcheck disable=SC1091
-  source "$REPO_DIR/scenario-player/sim_env.sh"
+  source "$REPO_DIR/scenario_player/sim_env.sh"
   sim_reset
 
   echo "Next: $0 setup"
@@ -225,19 +225,19 @@ case "${1:-}" in
   seed-run)
     calibration="${2:?calibration required}"; run="${3:?run number required}"; shift 3 || true
     activate_venv
-    python3 "$REPO_DIR/scenario-player/seed.py" seed-run --calibration "$calibration" --run "$run" "$@"
+    python3 "$REPO_DIR/scenario_player/seed.py" seed-run --calibration "$calibration" --run "$run" "$@"
     ;;
   add-ls)
     activate_venv
-    python3 "$REPO_DIR/scenario-player/seed.py" add-ls --calibration "${2:?calibration required}" --run "${3:?run required}" --ls "${4:?ls number required}"
+    python3 "$REPO_DIR/scenario_player/seed.py" add-ls --calibration "${2:?calibration required}" --run "${3:?run required}" --ls "${4:?ls number required}"
     ;;
   end-run)
     activate_venv
-    python3 "$REPO_DIR/scenario-player/seed.py" end-run --run "${2:?run number required}"
+    python3 "$REPO_DIR/scenario_player/seed.py" end-run --run "${2:?run number required}"
     ;;
   list-runs)
     activate_venv
-    python3 "$REPO_DIR/scenario-player/seed.py" list-runs
+    python3 "$REPO_DIR/scenario_player/seed.py" list-runs
     ;;
   play)
     # Everything after `play` goes to scenario_player.py untouched -- this verb never

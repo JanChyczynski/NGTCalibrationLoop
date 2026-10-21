@@ -1,6 +1,6 @@
 """
-End-to-end "scenario-test": plays scenario-player/scenarios/basic_ecal_pedestals.yaml through
-scenario-player/live_demo.sh (real NGTLoopStep2/3/4.py processes in tmux against the fake
+End-to-end "scenario-test": plays scenario_player/scenarios/basic_ecal_pedestals.yaml through
+scenario_player/live_demo.sh (real NGTLoopStep2/3/4.py processes in tmux against the fake
 OMS/EOS/CMSSW toolchain) and checks what the loops left behind in a scratch $NGT_DEV_HOME.
 
 Slow (about a minute) and needs bash + tmux + the repo-root .venv, so it is deselected from the
@@ -16,8 +16,8 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-LIVE_DEMO = REPO_ROOT / "scenario-player" / "live_demo.sh"
-SCENARIO = REPO_ROOT / "scenario-player" / "scenarios" / "basic_ecal_pedestals.yaml"
+LIVE_DEMO = REPO_ROOT / "scenario_player" / "live_demo.sh"
+SCENARIO = REPO_ROOT / "scenario_player" / "scenarios" / "basic_ecal_pedestals.yaml"
 CALIBRATION = "EcalPedestals"
 SPEED = 2
 PIPELINE_TIMEOUT_SECONDS = 240  # after playback ends: Step 2 -> 3 -> 4 still have to finish

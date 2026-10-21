@@ -5,7 +5,7 @@
 NGTLoopStep2.py only ever calls this with a single file URL and parses the
 "run  lumisection  events" table it prints. Real files carry that info inside
 CMSSW's ROOT metadata; our fake files instead carry it in their filename, using
-the convention `run<RUN6DIGIT>_ls<LS>....root` (see scenario-player/seed.py's seed-run
+the convention `run<RUN6DIGIT>_ls<LS>....root` (see scenario_player/seed.py's seed-run
 and add-ls subcommands, which create files following it).
 
 A file with a name that doesn't match the convention -- or that doesn't exist --
