@@ -20,9 +20,10 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
 
 # sim_setup: create/refresh everything under $NGT_DEV_HOME that any engine
-# adapter needs -- the fake scenario-player/bin/ toolchain, env.sh, ngtParameters.jsn,
-# and (via scenario-player/seed.py, itself fully engine-agnostic) the per-calibration
-# fake EOS layout and an empty fake OMS runs file. Safe to re-run.
+# adapter needs -- env.sh (which puts this checkout's fake scenario-player/bin/
+# toolchain on $PATH), ngtParameters.jsn, and (via scenario-player/seed.py,
+# itself fully engine-agnostic) the per-calibration fake EOS layout and an empty
+# fake OMS runs file. Safe to re-run.
 #
 # Needs an active venv (any one) for its `pip install -e tests/stubs` step
 # below -- checked upfront so a forgotten `source .../activate` fails with a
@@ -38,15 +39,8 @@ sim_setup() {
     return 1
   fi
 
-  mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos,bin}
+  mkdir -p "$NGT_DEV_HOME"/{data,logs,cond_auth,calibrationYAML,eos}
   mkdir -p "$NGT_DEV_HOME/cmssw_home/CMSSW_16_0_7_patch1/src"
-
-  # -r-less glob copy: skip subdirs (e.g. a stray __pycache__) instead of
-  # letting cp's non-zero exit on them silently abort this function under set -e.
-  for f in "$REPO_DIR"/scenario-player/bin/*; do
-    [ -f "$f" ] && cp "$f" "$NGT_DEV_HOME/bin/"
-  done
-  chmod +x "$NGT_DEV_HOME"/bin/*
 
   cat > "$NGT_DEV_HOME/ngtParameters.jsn" <<JSON
 {
@@ -66,7 +60,7 @@ export NGT_DEV_HOME="$NGT_DEV_HOME"
 export NGT_PARAMETERS_PATH="$NGT_DEV_HOME/ngtParameters.jsn"
 export NGT_CALIBRATION_YAML_DIR="$NGT_DEV_HOME/calibrationYAML"
 export NGT_OMS_STUB_RUNS_FILE="$NGT_DEV_HOME/oms_runs.json"
-export PATH="$NGT_DEV_HOME/bin:\$PATH"
+export PATH="$REPO_DIR/scenario-player/bin:\$PATH"
 export PYTHONPATH="$REPO_DIR/tests/stubs:\${PYTHONPATH:-}"
 
 # A real CMSSW environment provides cmsenv/cmsrel as shell *functions*, and bash
