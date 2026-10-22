@@ -22,6 +22,5 @@ faults:
   - {target: oms, mode: connection_error, run: 900011, at: 5, times: 2}
   - {target: upload_conditions, mode: exit_code, exit_code: 1, calibration: EcalPedestals, run: 900011, at: 10}
   - {target: cmsrun, mode: exit_code, exit_code: 139, calibration: EcalPedestals, run: 900011, step: step2, at: 15}
-  - {target: oms, mode: http_error, status: 503, at: 30}
   - {target: upload_conditions, mode: exit_code, exit_code: 1, calibration: EcalPedestals, run: 900012, at: 95, times: 6}
   - {target: cmsrun, mode: exit_code, exit_code: 139, calibration: EcalPedestals, run: 900012, step: step2, at: 100, times: 6}
