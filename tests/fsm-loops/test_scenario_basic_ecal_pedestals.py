@@ -47,14 +47,9 @@ def _wait_until(condition, timeout):
 
 @pytest.fixture
 def demo_home(tmp_path):
-    """Scratch $NGT_DEV_HOME, with the demo's tmux sessions torn down afterwards. Its own
-    NGT_INSTANCE keeps them apart from a demo of the same checkout that may be running."""
-    env = dict(
-        os.environ,
-        NGT_DEV_HOME=str(tmp_path / "demo-env"),
-        NGT_LOOP_SLEEP_SECONDS="2",
-        NGT_INSTANCE=f"pytest_{os.getpid()}",
-    )
+    """Scratch $NGT_DEV_HOME, with the demo's tmux sessions torn down afterwards. Its sessions
+    are named after it, so they stay apart from a demo of the same checkout that may be running."""
+    env = dict(os.environ, NGT_DEV_HOME=str(tmp_path / "demo-env"), NGT_LOOP_SLEEP_SECONDS="2")
 
     def demo(*args):
         return subprocess.run(

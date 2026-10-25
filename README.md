@@ -265,7 +265,7 @@ Three settings are overridable via environment variables:
 |---------------------------|--------------------------------------|-----------------------------------|
 | `NGT_DEV_HOME`             | `./demo-env`                         | scratch state directory           |
 | `NGT_LOOP_SLEEP_SECONDS`   | `5` (production default: `60`)       | Step 3/4 poll interval, seconds   |
-| `NGT_INSTANCE`             | checkout dir name + a hash of its path | names this demo's tmux sessions |
+| `NGT_INSTANCE`             | checkout dir name + a hash of its path (and of `NGT_DEV_HOME`, if not the default) | names this demo's tmux sessions |
 
 e.g. `NGT_DEV_HOME=/tmp/ngt-demo ./scenario-player/live_demo.sh setup`. `NGT_DEV_HOME` is read
 at `setup` time and baked into `$NGT_DEV_HOME/ngtParameters.jsn`, so re-run `setup`
@@ -273,9 +273,10 @@ after changing it. `NGT_LOOP_SLEEP_SECONDS` is read fresh each time a loop is
 started (`start2` / `start3` / `start4` / `start-all`).
 
 The loops' tmux sessions are named `NGTDemo_<NGT_INSTANCE>_<step>_<calibration>` (`start-all`
-and `status` print them), and `status`, `stop-all` and `reset` only see their own. So two checkouts
-run their demos side by side; for two `NGT_DEV_HOME`s of one checkout, give each its own
-`NGT_INSTANCE` too.
+and `status` print them), and `status`, `stop-all` and `reset` only see their own. The default
+`NGT_INSTANCE` follows the checkout and, unless it is `./demo-env`, `NGT_DEV_HOME` too, so two
+checkouts -- or two `NGT_DEV_HOME`s of one -- run their demos side by side. Use the same
+`NGT_DEV_HOME` in every command of one demo.
 
 ## The offline simulator (`scenario-player/`)
 

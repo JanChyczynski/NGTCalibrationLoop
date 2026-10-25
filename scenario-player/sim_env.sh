@@ -18,11 +18,18 @@
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# A name for this checkout, unique per $REPO_DIR (basename + a short hash of the full path),
-# that engine adapters use to keep several checkouts' state apart -- live_demo.sh names its
-# tmux sessions after it. NGT_INSTANCE_HASH is the same hash as a number.
+export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
+
+# A name for this checkout and scratch environment, that engine adapters use to keep several of
+# them apart -- live_demo.sh names its tmux sessions after it: $REPO_DIR's basename plus a short
+# hash of its full path and, unless $NGT_DEV_HOME is the default $REPO_DIR/demo-env, of
+# $NGT_DEV_HOME too (the code is per checkout, the state a session works on per $NGT_DEV_HOME).
+# NGT_INSTANCE_HASH is the same hash as a number.
 if [ -z "${NGT_INSTANCE_HASH:-}" ]; then
-  NGT_INSTANCE_HASH="$(printf '%s' "$REPO_DIR" | cksum | cut -d' ' -f1)"
+  _ngt_key="$REPO_DIR"
+  [ "${NGT_DEV_HOME%/}" = "$REPO_DIR/demo-env" ] || _ngt_key="$REPO_DIR|${NGT_DEV_HOME%/}"
+  NGT_INSTANCE_HASH="$(printf '%s' "$_ngt_key" | cksum | cut -d' ' -f1)"
+  unset _ngt_key
 fi
 if [ -z "${NGT_INSTANCE:-}" ]; then
   _ngt_base="$(basename "$REPO_DIR" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '_')"
@@ -30,8 +37,6 @@ if [ -z "${NGT_INSTANCE:-}" ]; then
   unset _ngt_base
 fi
 export NGT_INSTANCE NGT_INSTANCE_HASH
-
-export NGT_DEV_HOME="${NGT_DEV_HOME:-$REPO_DIR/demo-env}"
 
 # sim_setup: create/refresh everything under $NGT_DEV_HOME that any engine
 # adapter needs -- env.sh (which puts this checkout's fake scenario-player/bin/
