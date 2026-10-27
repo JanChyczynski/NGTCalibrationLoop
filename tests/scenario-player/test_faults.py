@@ -18,7 +18,11 @@ def test_defaults():
     "raw, field, value",
     [
         ({"target": "oms", "mode": "http_error", "status": 503}, "status", 503),
-        ({**CMSRUN, "exit_code": 139, "calibration": "EcalPedestals", "run": 398600, "step": "step2"}, "step", "step2"),
+        (
+            {**CMSRUN, "exit_code": 139, "calibration": "EcalPedestals", "run": 398600, "step": "step2"},
+            "step",
+            "step2",
+        ),
         ({**OMS, "times": "unlimited"}, "times", None),
     ],
 )

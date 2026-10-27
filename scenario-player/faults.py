@@ -61,25 +61,57 @@ def _is_int(value):
 def parse_fault_spec(raw: dict) -> FaultSpec:
     """Validate one `faults:` entry into a FaultSpec, raising FaultSpecError naming the
     offending field. A field set to None counts as unset; a scenario's `at` is the caller's to pop."""
-    fields = {k: v for k, v in raw.items() if v is not None}
-    target = fields.pop("target", None)
+    fields = {key: value for key, value in raw.items() if value is not None}
+    _validate_fields(fields)
+
+    if fields["target"] != "oms":
+        fields.setdefault("exit_code", 1)
+    if fields.get("times") == "unlimited":
+        fields["times"] = None
+    return FaultSpec(**fields)
+
+
+def _validate_fields(fields: dict):
+    """Raise FaultSpecError unless `fields` -- a `faults:` entry without its unset fields --
+    is a fault its target's consumer acts on."""
+    target = fields.get("target")
     _require(target in TARGETS, f"faults: 'target' must be one of {TARGETS}, got {target!r}")
-    extra = set(fields) - FIELDS[target]
-    _require(not extra, f"faults: target={target!r} takes only {sorted(FIELDS[target])}, got {sorted(extra)}")
+
+    unknown = set(fields) - {"target"} - FIELDS[target]
+    _require(
+        not unknown,
+        f"faults: target={target!r} takes only {sorted(FIELDS[target])}, got {sorted(unknown)}",
+    )
+
     mode = fields.get("mode")
-    _require(mode in MODES[target], f"faults: target={target!r} 'mode' must be one of {MODES[target]}, got {mode!r}")
+    _require(
+        mode in MODES[target],
+        f"faults: target={target!r} 'mode' must be one of {MODES[target]}, got {mode!r}",
+    )
+
     times = fields.get("times", 1)
-    _require(times == "unlimited" or (_is_int(times) and times > 0),
-             f"faults: 'times' must be a positive integer or 'unlimited', got {times!r}")
+    _require(
+        times == "unlimited" or (_is_int(times) and times > 0),
+        f"faults: 'times' must be a positive integer or 'unlimited', got {times!r}",
+    )
+
     if mode == "http_error":
-        status = fields.get("status")  # below 400, raise_for_status() never raises
-        _require(_is_int(status) and status >= 400, f"faults: http_error needs an int 'status' >= 400, got {status!r}")
-    if target != "oms":
-        exit_code = fields.setdefault("exit_code", 1)
-        _require(_is_int(exit_code) and exit_code != 0, f"faults: 'exit_code' must be a nonzero int, got {exit_code!r}")
-    step = fields.get("step")
-    _require(step in (None, *STEPS), f"faults: 'step' must be one of {STEPS}, got {step!r}")
-    return FaultSpec(target=target, **{**fields, "times": None if times == "unlimited" else times})
+        status = fields.get("status")
+        _require(
+            _is_int(status) and status >= 400,  # below 400, raise_for_status() never raises
+            f"faults: http_error needs an int 'status' >= 400, got {status!r}",
+        )
+
+    if "exit_code" in fields:
+        exit_code = fields["exit_code"]
+        _require(
+            _is_int(exit_code) and exit_code != 0,
+            f"faults: 'exit_code' must be a nonzero int, got {exit_code!r}",
+        )
+
+    if "step" in fields:
+        step = fields["step"]
+        _require(step in STEPS, f"faults: 'step' must be one of {STEPS}, got {step!r}")
 
 
 def fault_spec_to_entry(spec: FaultSpec) -> dict:
@@ -97,7 +129,8 @@ def describe(target, fault):
     """The error text an injected fault produces, e.g.
     "(FAKE) injected cmsrun fault: mode=exit_code exit_code=139 calibration=EcalPedestals step=step2"."""
     keys = ("mode", "status", "exit_code", "calibration", "run", "step")
-    return f"(FAKE) injected {target} fault: " + " ".join(f"{k}={fault[k]}" for k in keys if fault.get(k) is not None)
+    details = " ".join(f"{key}={fault[key]}" for key in keys if fault.get(key) is not None)
+    return f"(FAKE) injected {target} fault: {details}"
 
 
 def atomic_write_json(path, data):
