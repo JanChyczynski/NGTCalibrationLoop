@@ -195,7 +195,8 @@ def cmd_list_runs(_args):
 
 
 def cmd_arm_fault(args):
-    raw = {key: getattr(args, key) for key in ("target", "mode", "status", "exit_code", "calibration", "run", "step")}
+    fields = ("target", "mode", "status", "exit_code", "calibration", "run", "step")
+    raw = {field: getattr(args, field) for field in fields}
     raw["times"] = int(args.times) if args.times.isdigit() else args.times
     try:
         entry = arm_fault(ngt_faults.parse_fault_spec(raw))
@@ -206,12 +207,17 @@ def cmd_arm_fault(args):
 
 
 def cmd_list_faults(args):
-    lines = [f"{t}: {json.dumps(e)}" for t in ([args.target] if args.target else ngt_faults.TARGETS) for e in _armed(t)]
-    print("\n".join(lines) if lines else f"(no faults armed in {FAULTS_DIR})")
+    targets = [args.target] if args.target else ngt_faults.TARGETS
+    armed = [(target, entry) for target in targets for entry in _armed(target)]
+    if not armed:
+        print(f"(no faults armed in {FAULTS_DIR})")
+    for target, entry in armed:
+        print(f"{target}: {json.dumps(entry)}")
 
 
 def cmd_clear_faults(args):
-    for target in [args.target] if args.target else ngt_faults.TARGETS:
+    targets = [args.target] if args.target else ngt_faults.TARGETS
+    for target in targets:
         _fault_file(target).unlink(missing_ok=True)
     print(f"Cleared fault(s) for {args.target or 'all targets'}")
 

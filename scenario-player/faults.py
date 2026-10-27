@@ -207,12 +207,25 @@ def scope_from_cwd(cwd):
     """{calibration, run, step} of a job the loops run in `cwd`: Step 2 in <data>/<calibration>/run<N>/,
     Steps 3 and 4 one level deeper, in alcaPromptJob<NNN>/ and harvestJob<NNN>/."""
     parts = str(cwd).replace("\\", "/").rstrip("/").split("/")
-    i = next((i for i, part in enumerate(parts) if re.fullmatch(r"run\d+", part)), None)
-    if i is None:
+    run_index = next((i for i, part in enumerate(parts) if re.fullmatch(r"run\d+", part)), None)
+    if run_index is None:
         return {}
-    job = parts[i + 1] if i + 1 < len(parts) else ""
-    step = "step3" if job.startswith("alcaPromptJob") else "step4" if job.startswith("harvestJob") else None
-    return {"calibration": parts[i - 1] if i else None, "run": parts[i][3:], "step": step if job else "step2"}
+
+    job_dir = parts[run_index + 1] if run_index + 1 < len(parts) else None
+    if job_dir is None:
+        step = "step2"
+    elif job_dir.startswith("alcaPromptJob"):
+        step = "step3"
+    elif job_dir.startswith("harvestJob"):
+        step = "step4"
+    else:
+        step = None
+
+    return {
+        "calibration": parts[run_index - 1] if run_index > 0 else None,
+        "run": parts[run_index][len("run"):],
+        "step": step,
+    }
 
 
 def consume_armed(target):

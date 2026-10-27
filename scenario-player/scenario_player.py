@@ -137,8 +137,10 @@ def _load_scenario(path):
 
 
 def _describe_fault(spec: ngt_faults.FaultSpec):
-    scope = ", ".join(f"{k}={getattr(spec, k)}" for k in ("calibration", "run", "step") if getattr(spec, k) is not None)
-    return f"arm-fault --target {spec.target} --mode {spec.mode}" + (f" ({scope})" if scope else "")
+    command = f"arm-fault --target {spec.target} --mode {spec.mode}"
+    scope = {key: getattr(spec, key) for key in ("calibration", "run", "step")}
+    scope_text = ", ".join(f"{key}={value}" for key, value in scope.items() if value is not None)
+    return f"{command} ({scope_text})" if scope_text else command
 
 
 @dataclass

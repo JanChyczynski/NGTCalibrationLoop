@@ -23,7 +23,8 @@ def _run_fake(tmp_path, fake, target, entry):
     faults_dir = tmp_path / "faults"
     faults_dir.mkdir()
     armed = faults_dir / f"{target}.json"
-    armed.write_text(json.dumps([{"mode": "exit_code", "exit_code": 139, "times_remaining": 1, **entry}]), encoding="utf-8")
+    entry = {"mode": "exit_code", "exit_code": 139, "times_remaining": 1, **entry}
+    armed.write_text(json.dumps([entry]), encoding="utf-8")
     job_dir = tmp_path / "data" / "EcalPedestals" / "run398600" / "harvestJob000"
     job_dir.mkdir(parents=True)
     result = subprocess.run(
@@ -37,12 +38,17 @@ def _run_fake(tmp_path, fake, target, entry):
     return result, json.loads(armed.read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("fake, target", [("cmsRun", "cmsrun"), ("uploadConditions.py", "upload_conditions")])
+@pytest.mark.parametrize(
+    "fake, target", [("cmsRun", "cmsrun"), ("uploadConditions.py", "upload_conditions")]
+)
 def test_a_fault_armed_for_the_job_fires_once(tmp_path, fake, target):
     result, left = _run_fake(tmp_path, fake, target, {"calibration": "EcalPedestals", "run": 398600})
 
     assert result.returncode == 139
-    assert f"(FAKE) injected {target} fault: mode=exit_code exit_code=139 calibration=EcalPedestals run=398600" in result.stderr
+    assert (
+        f"(FAKE) injected {target} fault: mode=exit_code exit_code=139 calibration=EcalPedestals run=398600"
+        in result.stderr
+    )
     assert left == []
 
 
