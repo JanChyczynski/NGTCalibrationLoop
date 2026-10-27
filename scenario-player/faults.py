@@ -75,43 +75,37 @@ def _validate_fields(fields: dict):
     """Raise FaultSpecError unless `fields` -- a `faults:` entry without its unset fields --
     is a fault its target's consumer acts on."""
     target = fields.get("target")
-    _require(target in TARGETS, f"faults: 'target' must be one of {TARGETS}, got {target!r}")
+    _require(target in TARGETS,
+             f"faults: 'target' must be one of {TARGETS}, got {target!r}")
 
-    unknown = set(fields) - {"target"} - FIELDS[target]
-    _require(
-        not unknown,
-        f"faults: target={target!r} takes only {sorted(FIELDS[target])}, got {sorted(unknown)}",
-    )
+    allowed = FIELDS[target]
+    unknown = set(fields) - {"target"} - allowed
+    _require(not unknown,
+             f"faults: target={target!r} takes only {sorted(allowed)}, got {sorted(unknown)}")
 
     mode = fields.get("mode")
-    _require(
-        mode in MODES[target],
-        f"faults: target={target!r} 'mode' must be one of {MODES[target]}, got {mode!r}",
-    )
+    modes = MODES[target]
+    _require(mode in modes,
+             f"faults: target={target!r} 'mode' must be one of {modes}, got {mode!r}")
 
     times = fields.get("times", 1)
-    _require(
-        times == "unlimited" or (_is_int(times) and times > 0),
-        f"faults: 'times' must be a positive integer or 'unlimited', got {times!r}",
-    )
+    _require(times == "unlimited" or (_is_int(times) and times > 0),
+             f"faults: 'times' must be a positive integer or 'unlimited', got {times!r}")
 
     if mode == "http_error":
         status = fields.get("status")
-        _require(
-            _is_int(status) and status >= 400,  # below 400, raise_for_status() never raises
-            f"faults: http_error needs an int 'status' >= 400, got {status!r}",
-        )
+        _require(_is_int(status) and status >= 400,  # below 400, raise_for_status() never raises
+                 f"faults: http_error needs an int 'status' >= 400, got {status!r}")
 
     if "exit_code" in fields:
         exit_code = fields["exit_code"]
-        _require(
-            _is_int(exit_code) and exit_code != 0,
-            f"faults: 'exit_code' must be a nonzero int, got {exit_code!r}",
-        )
+        _require(_is_int(exit_code) and exit_code != 0,
+                 f"faults: 'exit_code' must be a nonzero int, got {exit_code!r}")
 
     if "step" in fields:
         step = fields["step"]
-        _require(step in STEPS, f"faults: 'step' must be one of {STEPS}, got {step!r}")
+        _require(step in STEPS,
+                 f"faults: 'step' must be one of {STEPS}, got {step!r}")
 
 
 def fault_spec_to_entry(spec: FaultSpec) -> dict:

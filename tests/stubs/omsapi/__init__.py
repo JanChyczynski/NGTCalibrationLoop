@@ -59,9 +59,7 @@ def set_failure(mode=True, *, status=None, times=1, run=None):
         _FAULTS.clear()
         return
     times = "unlimited" if times is None else times
-    spec = ngt_faults.parse_fault_spec(
-        {"target": "oms", "mode": mode, "status": status, "times": times, "run": run}
-    )
+    spec = ngt_faults.parse_fault_spec({"target": "oms", "mode": mode, "status": status, "times": times, "run": run})
     _FAIL = False
     _FAULTS[:] = [ngt_faults.fault_spec_to_entry(spec)]
 
