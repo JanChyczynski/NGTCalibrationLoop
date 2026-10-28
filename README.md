@@ -426,8 +426,8 @@ expect:
 `--no-validate` plays a scenario ignoring its block; `--dry-run` prints the block with the timeline.
 
 Tests: `tests/scenario-player/test_fake_toolchain_provenance.py`, `test_fake_conddb.py` and
-`test_scenario_expectations.py`; `tests/fsm-loops/test_scenario_basic_ecal_pedestals.py` checks
-`basic_ecal_pedestals.yaml`'s block against the real loops.
+`test_scenario_expectations.py`; `tests/fsm-loops/test_scenarios.py` checks the blocks of
+`basic_ecal_pedestals.yaml` and `fault_injection_demo.yaml` against the real loops.
 
 ## Public Presentations
 
