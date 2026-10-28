@@ -221,5 +221,5 @@ def test_upload_writes_no_row_when_a_fault_is_armed(chain, tmp_path, monkeypatch
 
     result = _run("uploadConditions.py", ["NGTCalibEcalPedestals.db"], harvest, ok=False)
 
-    assert result.returncode == 1 and "ERROR" in result.stderr
+    assert result.returncode == 1 and "(FAKE) injected upload_conditions fault" in result.stderr
     assert len(fake_conddb.read_ledger()) == 1  # only _full_chain's own upload
