@@ -52,7 +52,7 @@ def main():
 
     # Derived from the actual inputs, never from the scenario: feed a harvest the wrong files and
     # its payload is wrong too.
-    scope = _scope_from_cwd()
+    scope = faults.scope_from_cwd(os.getcwd())
     lumisections = fake_conddb.merge_input_lumisections(inputs)
     for output in outputs:
         fake_conddb.write_provenance(output, lumisections=lumisections, inputs=inputs, **scope)

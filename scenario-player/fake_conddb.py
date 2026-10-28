@@ -29,7 +29,7 @@ def _as_int(value):
         return None
 
 
-def write_provenance(path, *, step, calibration, run, lumisections, inputs):
+def write_provenance(path, *, lumisections, inputs, step=None, calibration=None, run=None):
     """Write one output file as a provenance manifest. Returns the manifest."""
     manifest = {
         "step": step,
