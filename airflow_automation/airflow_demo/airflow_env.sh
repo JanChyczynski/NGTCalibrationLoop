@@ -1,9 +1,8 @@
 #!/bin/bash
 # Sourced by airflow_demo.sh (and usable standalone) to configure a local
 # Airflow 3.x instance pointed at this repo's airflow_automation/airflow_dags/, backed by a
-# per-instance database on the local Postgres (LocalExecutor needs row-level
-# locking, which SQLite doesn't support -- see README.md's Airflow setup
-# section for how the `airflow_ngt` role was created).
+# per-instance database on the local Postgres (see README.md's Airflow setup
+# section for why, and for how the `airflow_ngt` role was created).
 #
 # This is the Airflow-*specific* half of the live-test setup -- infrastructure
 # env vars only (executor, DB, DAGs folder, auth). The engine-agnostic half

@@ -596,10 +596,10 @@ This is the setup on a bare host, for working on the DAGs; to run it in containe
 venv, Postgres or tmux on the host, see "Running Airflow in containers" below.
 
 Airflow has no official Windows support -- run it from a Linux host (WSL works fine on
-Windows). This repo targets **Airflow 3.3.1** on Python 3.12, with `LocalExecutor` against a
-local Postgres instance (needed for real task parallelism across the DAGs; SQLite only
-supports `SequentialExecutor`, which would serialize every task across every
-calibration).
+Windows). This repo targets **Airflow 3.3.1** on Python 3.12, with `LocalExecutor` (real task
+parallelism across the DAGs) against a local Postgres instance. Airflow 3 has dropped
+`SequentialExecutor`, and 3.3.1 runs `LocalExecutor` on SQLite too, in WAL mode with tasks in
+parallel, but Airflow's docs keep SQLite for development and every setup here uses Postgres.
 
 ```bash
 # 1. Airflow venv (separate from the repo's .venv used for plain pytest)
