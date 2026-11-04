@@ -713,6 +713,9 @@ image, in two shapes. Its [README](airflow_automation/airflow_containers/README.
   depends on the cluster, such as how the image gets there and how the UI gets exposed, goes on top as a kustomize overlay.
 - **On CERN's OpenShift** (`openshift/`): a worked example of such an overlay, with its own tutorial: an in-cluster
   image build and a Route reachable from the CERN network only. Not yet run on the real cluster.
+- **CERN SSO** (`cern-sso/`): a layer such an overlay can add, for logging in through a CERN account instead of the
+  generated password, with Admins managed by e-group in the Application Portal. Run against a stand-in for the SSO,
+  not yet the real one.
 
 The image works as an arbitrary non-root user with no capabilities, the strictest way a cluster can run it, and the
 Compose files run it that way. None of this changes what "Deploying on the calibration nodes" above says about the

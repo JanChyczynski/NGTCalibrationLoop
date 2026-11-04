@@ -13,6 +13,7 @@ Airflow DAGs against the fake OMS/EOS/CMSSW toolchain. No real data, no real upl
 | Run it with one container per Airflow component, as production would | [Separate containers](#separate-containers-on-one-machine) (`compose/`) | Docker with Compose v2 |
 | Show the UI to other people, with the least effort | [One pod on Kubernetes](#one-pod-on-kubernetes) (`onepod/`) | a Kubernetes cluster, `kubectl`, Docker |
 | The same on CERN's OpenShift, as a worked example | [`openshift/`](openshift/README.md) | a CERN account |
+| Log in to that pod with a CERN account, with Admins managed by e-group | [`cern-sso/`](cern-sso/README.md), on top of either | an SSO registration |
 
 All of them come from one image, [`Dockerfile`](Dockerfile): Airflow 3.3.1 plus this repo at `/opt/ngt`.
 
@@ -190,7 +191,8 @@ images:
     newTag: "1"
 ```
 
-[`openshift/`](openshift/README.md) is a worked example, for CERN's OpenShift.
+[`openshift/`](openshift/README.md) is a worked example, for CERN's OpenShift. [`cern-sso/`](cern-sso/README.md) is a
+layer such an overlay can add, for logging in through CERN's SSO.
 
 ### What this deployment doesn't do
 
