@@ -1,0 +1,9 @@
+# ../openshift logging in through CERN's SSO, with the registration the project already has: `oc apply -k`
+# this directory instead. Next to it rather than inside, as kustomize refuses a base that contains its
+# overlay. See ../openshift/README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../openshift
+components:
+  - ../cern-sso

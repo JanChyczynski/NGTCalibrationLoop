@@ -36,7 +36,7 @@ specific to one person's OS/venv/process setup belongs in a local, gitignored ov
     (one container per Airflow component, driven by `airflow_compose.sh`), `onepod/` (everything
     in one pod on any Kubernetes cluster), `openshift/` (that pod on CERN's OpenShift, an example of a
     cluster's own overlay and tutorial), `cern-sso/` (a layer on that pod, logging in through CERN's
-    SSO). Its `README.md` is the deployment tutorial. Inside a container,
+    SSO), `openshift-sso/` (the two together). Its `README.md` is the deployment tutorial. Inside a container,
     `airflow_demo.sh` still does everything but the process management (`NGT_AIRFLOW_IN_CONTAINER`).
 - `scenario-player/` — the engine-agnostic offline simulator, with no Airflow dependency:
   `sim_env.sh`, `live_demo.sh` (runs the FSM loops in tmux against it), `seed.py`,

@@ -139,36 +139,40 @@ oc delete -k airflow_automation/airflow_containers/openshift/   # remove everyth
 you a shell. Older logs are at <https://logs.paas.cern.ch> (30 days, CERN network, owner and administrator group), and
 resource use under Observe in the console.
 
-## Putting CERN SSO in front (optional)
+## Logging in with CERN SSO (optional)
 
-The platform team's [`cern-auth-proxy`](https://gitlab.cern.ch/paas-tools/okd4-deployment/cern-auth-proxy) chart puts a
-CERN login in front of a Service.
+Instead of the generated password: anyone with a CERN account can log in and is a Viewer, and who's an Admin is managed by
+e-group. Anyone on the CERN network can still read the UI with no login. [`openshift-sso/`](../openshift-sso/) adds
+[the `cern-sso` layer](../cern-sso/README.md) to this overlay, with the SSO registration every project already has,
+`webframeworks-paas-<project>`. So there's nothing to register, and its `oidc-client-secret` is already in your project.
 
-**Beware: the chart defaults to Internet visibility.** In the console (+Add -> Helm Chart -> Cern Auth Proxy) turn
-"Internet Visibility" **off**; in a values file, `route.public: false`:
-
-```yaml
-upstream:
-  service: {name: ngt-airflow, port: 8080}
-route:
-  hostname: ngt-demo.app.cern.ch           # or anything free under app.cern.ch / web.cern.ch / docs.cern.ch
-  public: false                            # CERN network only
-authOptions:
-  allowedRole: default-role
-```
+Deploy that instead, then tell the registration where to send people back to, and who's an Admin:
 
 ```bash
-helm repo add paas-helm-charts https://gitlab.cern.ch/api/v4/projects/124069/packages/helm/master
-helm install cern-auth-proxy -f values.yaml paas-helm-charts/cern-auth-proxy
-oc delete route ngt-airflow
+oc apply -k airflow_automation/airflow_containers/openshift-sso/
+
+HOST=$(oc get route ngt-airflow -o jsonpath='{.spec.host}')
+oc apply -f - <<EOF
+apiVersion: webservices.cern.ch/v1alpha1
+kind: OidcReturnURI
+metadata:
+  name: ngt-airflow
+spec:
+  redirectURI: https://$HOST/auth/oauth-authorized/cern
+EOF
 ```
 
-That last line is needed either way: a Route of ours on the same host gets the proxy's rejected until it's deleted, and
-one on a different host bypasses the proxy. Remove the proxy later with `helm uninstall`, not by deleting its parts.
+In the [Application Portal](https://application-portal.web.cern.ch): `webframeworks-paas-<project>` -> Roles -> add a role
+with the identifier `admin`, and add the e-groups that should have it. Then log in at `/auth/login/`, through "Sign In with
+cern".
 
-By default that lets in all CERN and eduGAIN users. To limit it, in the
-[Application Portal](https://application-portal.web.cern.ch): `webframeworks-paas-<project>` -> Roles -> edit the default
-role -> untick "applies to all authenticated users" -> add e-groups. Airflow's own login stays behind it.
+If the Route's host changes, so must the `OidcReturnURI`. To remove all of it, `oc delete -k` that same directory, and
+`oc delete oidcreturnuri ngt-airflow`. The [layer's page](../cern-sso/README.md) has the rest, including having people log
+in for reading as well. A separate registration, independent of this project, works too: the guide's page on native SSO
+support says how, and it needs a Secret of another name, as `oidc-client-secret` is reserved here.
+
+The platform's `cern-auth-proxy` isn't needed for any of this. It puts a login in front of everything, reading included, and
+beware that it defaults to Internet visibility.
 
 ## What's different from other clusters
 

@@ -29,9 +29,9 @@ def _resources():
     return _by_kind((OVERLAY / "ngt-airflow-openshift.yaml").read_text(encoding="utf-8"))
 
 
-def _rendered():
+def _rendered(overlay=OVERLAY):
     """What `oc apply -k` would create."""
-    result = subprocess.run(["kubectl", "kustomize", str(OVERLAY)], capture_output=True, text=True, check=True)
+    result = subprocess.run(["kubectl", "kustomize", str(overlay)], capture_output=True, text=True, check=True)
     return _by_kind(result.stdout)
 
 
@@ -73,6 +73,23 @@ def test_rendered_overlay_is_the_base_plus_what_this_cluster_needs():
     triggers = json.loads(rendered["Deployment"]["metadata"]["annotations"]["image.openshift.io/triggers"])
     assert triggers[0]["from"] == {"kind": "ImageStreamTag", "name": "ngt-airflow:latest"}
     assert '@.name=="airflow"' in triggers[0]["fieldPath"]
+
+
+@needs_kubectl
+def test_rendered_sso_overlay_is_this_overlay_with_the_projects_own_registration():
+    plain, rendered = _rendered(), _rendered(CONTAINERS / "openshift-sso")
+    assert set(rendered) == set(plain)
+    assert rendered["Route"] == plain["Route"]
+    assert rendered["Deployment"]["metadata"]["annotations"] == plain["Deployment"]["metadata"]["annotations"]
+    pod = rendered["Deployment"]["spec"]["template"]["spec"]
+    containers = {c["name"]: c for c in pod["containers"]}
+    # The name the platform gives the automatic registration's Secret, and the way it wants that used: as
+    # environment variables, not a copy, since it may update the values.
+    assert containers["airflow"]["envFrom"] == [{"prefix": "sso_", "secretRef": {"name": "oidc-client-secret"}}]
+    env = {e["name"]: e["value"] for e in containers["airflow"]["env"]}
+    assert env["AIRFLOW__FAB__CONFIG_FILE"].endswith("/cern-sso/webserver_config.py")
+    assert env["AIRFLOW__FAB__COOKIE_SECURE"] == "True"
+    assert "runAsUser" not in containers["postgres"]["securityContext"]
 
 
 def test_build_finds_the_dockerfile():
