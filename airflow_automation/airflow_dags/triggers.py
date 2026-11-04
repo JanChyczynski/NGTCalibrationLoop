@@ -22,7 +22,7 @@ from airflow.triggers.base import BaseEventTrigger, TriggerEvent
 from ngt_calibration_loop import config, oms, step2
 
 # Production default: 30 min. Overridable via _process_tasks.py's
-# NGT_RUN_END_GRACE_SECONDS (airflow_automation/airflow_demo/airflow_demo.sh
+# NGT_RUN_END_GRACE_SECONDS (airflow_automation/airflow_demo/airflow_env.sh
 # sets a short one for the live-test setup).
 DEFAULT_RUN_END_GRACE_SECONDS = 30 * 60
 

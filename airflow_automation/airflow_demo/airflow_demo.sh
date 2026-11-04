@@ -7,8 +7,8 @@
 # offline. Needs a Linux host (Airflow has no Windows support; WSL works fine
 # on Windows).
 #
-# Manages ONE Airflow instance per checkout (own AIRFLOW_HOME, metadata DB, port and tmux
-# sessions -- see airflow_env.sh, so several checkouts can run side by side) running
+# Manages ONE Airflow instance per checkout (own AIRFLOW_HOME, metadata DB and port -- see
+# airflow_env.sh, so several checkouts can run side by side) running
 # airflow_automation/airflow_dags/ngt_dags_watch.py (4 DAGs -- all-static-asset,
 # AssetWatcher-driven, zero cron; see its module docstring), which the
 # seed-run/add-ls/end-run/scenario_player.py-driven fake run feeds.
@@ -56,18 +56,15 @@ set -euo pipefail
 
 # airflow_env.sh sources sim_env.sh itself, and both pick up the gitignored local_*_env.sh
 # overrides -- so sourcing it here (not just in activate_venv) makes every per-checkout value
-# (ports, tmux prefix, venv path, ...) available to usage and to commands that never activate.
+# (ports, venv path, ...) available to usage and to commands that never activate.
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/airflow_env.sh"
 CALIBRATIONS=(SiStripBad EcalPedestals BeamSpot)
 PLAYER="$REPO_DIR/scenario-player/scenario_player.py"
 VIEWS="$REPO_DIR/airflow_automation/airflow_demo/watch_views.py"
 
-# tmux session names, per checkout (see airflow_env.sh's NGT_AIRFLOW_TMUX_PREFIX).
-SESSION_SCHEDULER="${NGT_AIRFLOW_TMUX_PREFIX}Scheduler"
-SESSION_DAG_PROCESSOR="${NGT_AIRFLOW_TMUX_PREFIX}DagProcessor"
-SESSION_API_SERVER="${NGT_AIRFLOW_TMUX_PREFIX}ApiServer"
-SESSION_TRIGGERER="${NGT_AIRFLOW_TMUX_PREFIX}Triggerer"
+# Airflow's long-running processes, by the names start/stop/status/logs know them.
+COMPONENTS=(scheduler dag-processor api triggerer)
 
 usage() {
   cat <<USAGE
@@ -77,12 +74,14 @@ Setup:
   setup                                  Create/refresh \$NGT_DEV_HOME scratch data
                                           (fake EOS/CMSSW/OMS state; safe to re-run)
 
-Running Airflow (this checkout's own instance -- UI on :$NGT_AIRFLOW_PORT, tmux sessions ${NGT_AIRFLOW_TMUX_PREFIX}*):
-  start                                   Launch scheduler + dag-processor + API server + triggerer
-  stop                                    Kill all four tmux sessions
-  status                                  List this checkout's running Airflow tmux sessions
+Running Airflow (this checkout's own instance -- UI on :$NGT_AIRFLOW_PORT, background processes):
+  start                                   Launch whichever of scheduler, dag-processor, API server
+                                          and triggerer aren't running
+  stop [scheduler|dag-processor|api|triggerer]   Stop all four, or just that one ('stop triggerer'
+                                          then 'start' picks up an edited triggers.py)
+  status                                  Whether each is running, stopped or has died
   ui                                      Print the Airflow UI URL
-  logs <scheduler|dag-processor|api|triggerer>   Tail -f that process's tmux console log
+  logs <scheduler|dag-processor|api|triggerer>   Tail -f that process's log
 
 DAG control:
   unpause-watch                           Unpause ngt_dags_watch.py's 4 DAGs (starts the AssetWatchers)
@@ -178,24 +177,6 @@ ensure_airflow_db() {
   fi
 }
 
-demo_env_exports() {
-  # Printed as a block and eval'd inside the tmux session, after
-  # $NGT_DEV_HOME/env.sh (see start_component), so the scheduler (which is what
-  # actually executes task callables under LocalExecutor) inherits the
-  # Airflow-only settings on top of the fake toolchain env.sh already spells out.
-  #
-  # NGT_RUN_END_GRACE_SECONDS: read by _process_tasks.py and used by the
-  # file watchers (which run in the triggerer -- this block reaches
-  # it too, start_component uses it for all four processes uniformly).
-  # Production default (triggers.DEFAULT_RUN_END_GRACE_SECONDS) is 30 min;
-  # 20s here is comfortably above NGT_FILE_POLL_SECONDS
-  # (5s) without racing a normal in-flight poll, so a scenario's
-  # end-run resolves in seconds instead of minutes.
-  cat <<ENV
-export NGT_RUN_END_GRACE_SECONDS="${NGT_RUN_END_GRACE_SECONDS:-20}"
-ENV
-}
-
 cmd_setup() {
   activate_venv
   sim_setup
@@ -207,78 +188,97 @@ cmd_setup() {
   echo "Next: $0 start"
 }
 
-tmux_console_log() {
-  echo "$NGT_DEV_HOME/logs/tmux_console_airflow_$1.log"
+component_log() {
+  echo "$NGT_DEV_HOME/logs/airflow_$1.log"
 }
 
-session_env_file() {
-  echo "$AIRFLOW_HOME/airflow_demo_session_env.sh"
+component_pid_file() {
+  echo "$AIRFLOW_HOME/airflow_demo_$1.pid"
 }
 
-write_session_env() {
-  # What the four tmux sessions start from. A session's shell inherits the tmux *server's*
-  # environment -- that of whichever shell first started the server, possibly another
-  # checkout's `start` -- and inherited AIRFLOW_HOME/database/DAGs folder/ports would win over
-  # airflow_env.sh's `${VAR:-default}`s, quietly pointing this checkout's services at the other
-  # checkout's instance. So the file drops every inherited NGT_*/AIRFLOW_* variable and exports
-  # this script's own, exactly as airflow_env.sh resolved them (local_*_env.sh, then the
-  # caller's environment, then the defaults), plus PYTHONPATH. A file rather than the tmux
-  # command line, because AIRFLOW__DATABASE__SQL_ALCHEMY_CONN carries the database password and
-  # command lines are readable by every user.
-  local file v
-  file="$(session_env_file)"
-  mkdir -p "$(dirname "$file")"
-  rm -f "$file"
-  (
-    umask 077
-    {
-      echo "# Written by airflow_demo.sh start for this checkout's tmux sessions -- see its write_session_env."
-      # Single-quoted on purpose: expanded when a session sources the file, not here.
-      # shellcheck disable=SC2016
-      echo 'for _v in $(compgen -e); do case "$_v" in NGT_*|AIRFLOW_*) unset "$_v" ;; esac; done; unset _v'
-      for v in $(compgen -e); do
-        case "$v" in NGT_*|AIRFLOW_*|PYTHONPATH) printf 'export %s=%q\n' "$v" "${!v}" ;; esac
-      done
-    } > "$file"
-  )
+component_pid() {
+  # Prints a component's pid while it's alive. The name is checked because a pid file can outlive
+  # a reboot, and by then its number can belong to anything.
+  local pid
+  pid="$(cat "$(component_pid_file "$1")" 2>/dev/null)" || return 1
+  [[ "$(ps -o args= -p "$pid" 2>/dev/null)" == *airflow* ]] && echo "$pid"
+}
+
+any_component_running() {
+  local label
+  for label in "${COMPONENTS[@]}"; do
+    component_pid "$label" > /dev/null && return 0
+  done
+  return 1
 }
 
 start_component() {
-  local session="$1" label="$2"; shift 2
-  if tmux has-session -t "$session" 2>/dev/null; then
-    echo "$session already running"
+  local label="$1"; shift
+  if component_pid "$label" > /dev/null; then
+    echo "$label already running"
     return
   fi
   if [ ! -f "$NGT_DEV_HOME/env.sh" ]; then
     echo "No $NGT_DEV_HOME/env.sh -- run: $0 setup" >&2
     exit 1
   fi
-  local log; log="$(tmux_console_log "$label")"
-  # The session starts from the settings write_session_env saved (see there for why), and
-  # ngt_tmux_new_session (sim_env.sh) keeps them out of the tmux server's own environment.
+  local log; log="$(component_log "$label")"
+  if [ -f "$(component_pid_file "$label")" ]; then
+    echo "$label had died, restarting it -- why should be in its log: $log"
+    stop_components "$label"
+  fi
   # $NGT_DEV_HOME/env.sh is sim_env.sh's one spelling-out of the fake environment
   # (NGT_DEV_HOME itself included, which a non-default one needs to reach the fake
   # upload's ledger path) and drops any cmsenv/cmsrel shell functions that would
   # outrank the fake toolchain. The omsapi stub doesn't rely on its PYTHONPATH,
   # though: PYTHONPATH set in the launching shell was not reliably observed to reach
   # Airflow's forked/spawned worker subprocesses in testing, so sim_setup also
-  # pip-installs tests/stubs into $NGT_AIRFLOW_VENV. Plain -c, not -lc, as in
-  # live_demo.sh: nothing here needs the operator's login dotfiles.
-  ngt_tmux_new_session -d -s "$session" "bash -c '
-    source \"$(session_env_file)\"
-    source \"$NGT_AIRFLOW_VENV/bin/activate\"
-    source \"$NGT_DEV_HOME/env.sh\"
-    $(demo_env_exports)
-    $* 2>&1 | tee \"$log\"
-    echo \"($label exited -- press enter to close)\"; read
-  '"
-  echo "Started $session (console log: $log)"
+  # pip-installs tests/stubs into $NGT_AIRFLOW_VENV.
+  #
+  # Its own session outlives this script and its terminal, and holds everything the component
+  # starts, tasks included (those get process groups of their own), for stop_components to reach.
+  # A script's background job isn't a process group leader, so setsid doesn't fork: $! is the
+  # component itself, and the session's ID. Appending, so that a restart keeps why it died.
+  (
+    # shellcheck disable=SC1091
+    source "$NGT_DEV_HOME/env.sh"
+    exec setsid "$@"
+  ) >> "$log" 2>&1 < /dev/null &
+  echo "$!" > "$(component_pid_file "$label")"
+  echo "Started $label (pid $!, log: $log)"
+}
+
+stop_components() {
+  # All of each component's session. A live component takes its session down on TERM, its tasks
+  # included; the workers of a dead scheduler ignore it (measured: 32 of 33 processes still there
+  # after 30 s), so they're killed right away, and anything else that won't go at the end.
+  local label pid_file sid sessions=()
+  for label in "$@"; do
+    pid_file="$(component_pid_file "$label")"
+    [ -f "$pid_file" ] || continue
+    sid="$(cat "$pid_file")"
+    if component_pid "$label" > /dev/null; then
+      echo "Stopping $label"
+      pkill -TERM -s "$sid" || true
+      sessions+=("$sid")
+    elif pgrep -s "$sid" -f airflow > /dev/null; then
+      pkill -KILL -s "$sid" || true
+      sessions+=("$sid")
+    fi
+    rm -f "$pid_file"
+  done
+  [ "${#sessions[@]}" -gt 0 ] || return 0
+  local all deadline=$((SECONDS + NGT_AIRFLOW_STOP_SECONDS))
+  all="$(IFS=,; echo "${sessions[*]}")"
+  while pgrep -s "$all" > /dev/null && [ "$SECONDS" -lt "$deadline" ]; do
+    sleep 0.5
+  done
+  pkill -KILL -s "$all" || true
 }
 
 cmd_start() {
   activate_venv
-  mkdir -p "$NGT_DEV_HOME/logs"
-  write_session_env
+  mkdir -p "$NGT_DEV_HOME/logs" "$AIRFLOW_HOME"
 
   # Airflow 3 splits DAG parsing into its own mandatory process (the
   # scheduler no longer spawns it itself, unlike Airflow 2) -- the scheduler,
@@ -286,10 +286,13 @@ cmd_start() {
   # hosting ngt_dags_watch.py's AssetWatchers (see its module docstring) --
   # started unconditionally since it's harmless, near-zero-overhead idle
   # time if those DAGs are paused/unused.
-  start_component "$SESSION_SCHEDULER" scheduler airflow scheduler
-  start_component "$SESSION_DAG_PROCESSOR" dag-processor airflow dag-processor
-  start_component "$SESSION_API_SERVER" api "airflow api-server -p $NGT_AIRFLOW_PORT"
-  start_component "$SESSION_TRIGGERER" triggerer airflow triggerer
+  #
+  # Not `airflow standalone`, which runs fine on Postgres too but hides all four behind one parent
+  # that carries on when one of them dies, can't restart just one, and orphans them all on a TERM.
+  start_component scheduler airflow scheduler
+  start_component dag-processor airflow dag-processor
+  start_component api airflow api-server -p "$NGT_AIRFLOW_PORT"
+  start_component triggerer airflow triggerer
 
   echo
   echo "Give the dag-processor ~10-15s to parse airflow_automation/airflow_dags/ before unpausing DAGs."
@@ -302,7 +305,16 @@ cmd_ui() {
 }
 
 cmd_status() {
-  tmux list-sessions 2>/dev/null | grep "^$NGT_AIRFLOW_TMUX_PREFIX" || echo "(no ${NGT_AIRFLOW_TMUX_PREFIX}* tmux sessions running)"
+  local label pid
+  for label in "${COMPONENTS[@]}"; do
+    if pid="$(component_pid "$label")"; then
+      echo "$label: running (pid $pid)"
+    elif [ -f "$(component_pid_file "$label")" ]; then
+      echo "$label: DIED -- see '$0 logs $label'; '$0 start' restarts it"
+    else
+      echo "$label: stopped"
+    fi
+  done
 }
 
 cmd_logs() {
@@ -311,18 +323,17 @@ cmd_logs() {
     api|scheduler|dag-processor|triggerer) ;;
     *) echo "Usage: $0 logs <scheduler|dag-processor|api|triggerer>" >&2; exit 1 ;;
   esac
-  local f; f="$(tmux_console_log "$which")"
+  local f; f="$(component_log "$which")"
   [ -f "$f" ] || { echo "No log yet at $f -- has '$0 start' been run?" >&2; exit 1; }
   tail -f "$f"
 }
 
 cmd_stop() {
-  for session in "$SESSION_SCHEDULER" "$SESSION_DAG_PROCESSOR" "$SESSION_API_SERVER" "$SESSION_TRIGGERER"; do
-    if tmux has-session -t "$session" 2>/dev/null; then
-      tmux kill-session -t "$session"
-      echo "Killed $session"
-    fi
-  done
+  case "${1:-}" in
+    "") stop_components "${COMPONENTS[@]}" ;;
+    api|scheduler|dag-processor|triggerer) stop_components "$1" ;;
+    *) echo "Usage: $0 stop [scheduler|dag-processor|api|triggerer]" >&2; exit 1 ;;
+  esac
 }
 
 cmd_pause_unpause_watch() {
@@ -428,7 +439,7 @@ cmd_reset_airflow() {
   # paused by default). Use reset-watch instead to clear just
   # one design's history and leave the rest of the DB alone.
   #
-  # Stops/restarts the 4 tmux-managed processes around the reset (only if
+  # Stops/restarts the 4 processes around the reset (only if
   # they were already running): each one holds in-memory state tied to the
   # pre-reset schema (e.g. the scheduler/dag-processor's own Job row) and
   # reliably crashes on its next DB query once the tables underneath it have
@@ -437,7 +448,7 @@ cmd_reset_airflow() {
   # instance broken until the user figures out to restart it manually isn't
   # a usable reset.
   local was_running=0
-  if tmux has-session -t "$SESSION_SCHEDULER" 2>/dev/null; then
+  if any_component_running; then
     was_running=1
     cmd_stop
   fi
@@ -553,7 +564,7 @@ cmd_play() {
   # scenario-player/live_demo.sh's `play`, for Airflow: everything a scenario needs from a cold
   # start, then the scenario itself. Every argument goes to scenario_player.py untouched, and
   # the ones that play nothing skip the bring-up.
-  local arg session scenario="" skip=0 views=0
+  local arg label scenario="" skip=0 views=0
   for arg in "$@"; do
     if [ "$skip" = 1 ]; then skip=0; continue; fi
     case "$arg" in
@@ -576,8 +587,8 @@ cmd_play() {
   # A malformed scenario fails here, before any of Airflow is touched.
   python3 "$PLAYER" "$@" --only-list-calibrations > /dev/null
   if [ -z "${NGT_AIRFLOW_IN_CONTAINER:-}" ]; then
-    for session in "$SESSION_SCHEDULER" "$SESSION_DAG_PROCESSOR" "$SESSION_API_SERVER" "$SESSION_TRIGGERER"; do
-      if ! tmux has-session -t "$session" 2>/dev/null; then
+    for label in "${COMPONENTS[@]}"; do
+      if ! component_pid "$label" > /dev/null; then
         cmd_start
         echo
         break
@@ -634,7 +645,7 @@ cmd_reset_scenario() {
   # (see _reset_ngt_watermarks' own comment). That's the only Airflow-DB side effect here --
   # it only touches the watermark rows, not the Assets/DAG history/pause state.
   local was_running=0
-  if tmux has-session -t "$SESSION_SCHEDULER" 2>/dev/null; then
+  if any_component_running; then
     was_running=1
     cmd_stop
   fi
@@ -663,7 +674,7 @@ fi
 case "${1:-}" in
   setup) cmd_setup ;;
   start) cmd_start ;;
-  stop) cmd_stop ;;
+  stop) cmd_stop "${2:-}" ;;
   status) cmd_status ;;
   ui) cmd_ui ;;
   logs) cmd_logs "${2:?scheduler, dag-processor, or api required}" ;;

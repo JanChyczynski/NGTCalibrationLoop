@@ -9,7 +9,7 @@ Airflow DAGs against the fake OMS/EOS/CMSSW toolchain. No real data, no real upl
 
 | You want to... | Use | Needs |
 |---|---|---|
-| Develop DAGs and tests quickly, no image builds | [`../airflow_demo/airflow_demo.sh`](../airflow_demo/airflow_demo.sh) | Airflow venv, Postgres, tmux |
+| Develop DAGs and tests quickly, no image builds | [`../airflow_demo/airflow_demo.sh`](../airflow_demo/airflow_demo.sh) | Airflow venv, Postgres |
 | Run it with one container per Airflow component, as production would | [Separate containers](#separate-containers-on-one-machine) (`compose/`) | Docker with Compose v2 |
 | Show the UI to other people, with the least effort | [One pod on Kubernetes](#one-pod-on-kubernetes) (`onepod/`) | a Kubernetes cluster, `kubectl`, Docker |
 | The same on CERN's OpenShift, as a worked example | [`openshift/`](openshift/README.md) | a CERN account |

@@ -593,7 +593,7 @@ implementation to Airflow 3.3.1) is the planned improvement for 2026 data-taking
 ## Setting up and running Airflow
 
 This is the setup on a bare host, for working on the DAGs; to run it in containers instead, with no
-venv, Postgres or tmux on the host, see "Running Airflow in containers" below.
+venv or Postgres on the host, see "Running Airflow in containers" below.
 
 Airflow has no official Windows support -- run it from a Linux host (WSL works fine on
 Windows). This repo targets **Airflow 3.3.1** on Python 3.12, with `LocalExecutor` (real task
@@ -630,8 +630,8 @@ this repo on one machine -- or two `$NGT_DEV_HOME`s of one -- defaults to a name
 clone's directory and `$NGT_DEV_HOME` (`$NGT_INSTANCE`: the clone's basename plus a short hash of
 its full path and, unless `$NGT_DEV_HOME` is the default `./demo-env`, of that): the Airflow home
 (`~/airflow3-ngt-<instance>`), the Postgres database (`airflow3_ngt_<instance>`), the API
-server/UI port (8100-8899, from the same hash), the two task-log server ports, the tmux session
-names (`NGTAirflow_<instance>_*`) and `$NGT_DEV_HOME` (`./demo-env`). So two clones, or two
+server/UI port (8100-8899, from the same hash), the two task-log server ports and
+`$NGT_DEV_HOME` (`./demo-env`). So two clones, or two
 `$NGT_DEV_HOME`s of one, need no configuration to run isolated -- as long as every command of an
 instance gets the same `$NGT_DEV_HOME`, or it is a different instance; `./airflow_automation/airflow_demo/airflow_demo.sh ui` prints a clone's
 URL. Every one of those values is overridable -- from the environment, or persistently from
@@ -639,12 +639,9 @@ the gitignored `airflow_automation/airflow_demo/local_airflow_env.sh` (Airflow s
 `scenario-player/local_sim_env.sh` (simulator side, read by `live_demo.sh` too), which are
 sourced before the defaults are applied, so a value set there beats the environment
 (`NGT_SKIP_LOCAL_ENV=1` skips both files; the test suite sets it). Copy the `.example` file
-beside each to start; it lists every knob. The four Airflow processes get exactly the values
-`airflow_demo.sh` resolved: left alone, a tmux session inherits the tmux *server's* environment
--- that of whichever shell first started the server, possibly another clone's `start` -- and
-that clone's settings would beat these defaults. For the same reason the demo scripts start
-the tmux server without any of these settings, so a shell you later open in it carries no
-clone's identity.
+beside each to start; it lists every knob. The four Airflow processes inherit exactly the values
+`airflow_demo.sh` resolved. `live_demo.sh` starts the tmux server without any of these settings,
+so a shell you later open in it carries no clone's identity.
 
 No `airflow users create` step: `airflow_automation/airflow_demo/airflow_env.sh` sets
 `AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS=True`, so Airflow 3's Simple Auth Manager (the
@@ -679,7 +676,7 @@ instructions for EOS access, `COND_AUTH_PATH` credentials for the condDB upload,
 production-grade Airflow deployment (Postgres/MySQL metadata DB, `LocalExecutor` or
 `CeleryExecutor`, a real auth manager instead of Simple Auth Manager's all-admins mode, the
 DAGs folder pointed at this repo's `airflow_automation/airflow_dags/`, and the scheduler/dag-processor/API-server
-processes run as proper services rather than tmux sessions).
+processes run as proper services rather than `airflow_demo.sh`'s background processes).
 
 If the calibration nodes are actually a **pool** of worker machines rather than one host, one
 more thing needs deciding before rollout: Step 2's output is too large for shared storage to
@@ -807,7 +804,7 @@ $DATA_BASE_PATH/{calibration}/
 
 ## Running a live demo with Airflow
 
-`airflow_automation/airflow_demo/airflow_demo.sh` runs the real Airflow scheduler + dag-processor + API server (in tmux)
+`airflow_automation/airflow_demo/airflow_demo.sh` runs the real Airflow scheduler + dag-processor + API server + triggerer (as background processes)
 against the same fake OMS/EOS/CMSSW toolchain in `scenario-player/bin/` (fake `cmsDriver.py`, `cmsRun`,
 `edmFileUtil`, `xrdfs`, `cmsrel`, `cmsenv`, `uploadConditions.py`) and `scenario-player/seed.py` used by the
 tests -- bootstrapped via `scenario-player/sim_env.sh`'s `sim_setup`, shared with
@@ -818,15 +815,19 @@ Windows).
 
 ```bash
 ./airflow_automation/airflow_demo/airflow_demo.sh setup                                # create ./demo-env scratch env
-./airflow_automation/airflow_demo/airflow_demo.sh start                                 # scheduler + dag-processor + API server (port: `ui` prints it), tmux
+./airflow_automation/airflow_demo/airflow_demo.sh start                                 # scheduler + dag-processor + API server + triggerer (port: `ui` prints it)
 ./airflow_automation/airflow_demo/airflow_demo.sh unpause-watch                          # unpause the 4 DAGs (starts the watchers)
 ./airflow_automation/airflow_demo/airflow_demo.sh seed-run EcalPedestals 398600 --ls 51 52  # latch a fake live run
 ./airflow_automation/airflow_demo/airflow_demo.sh ui                                    # print the UI URL
 ./airflow_automation/airflow_demo/airflow_demo.sh add-ls EcalPedestals 398600 53         # simulate a new lumisection arriving
 ./airflow_automation/airflow_demo/airflow_demo.sh end-run 398600                         # simulate the run ending
-./airflow_automation/airflow_demo/airflow_demo.sh status                                 # list running tmux sessions
+./airflow_automation/airflow_demo/airflow_demo.sh status                                 # whether each process is running, stopped or has died
 ./airflow_automation/airflow_demo/airflow_demo.sh stop                                   # tear down all four processes
 ```
+
+The four processes run detached from your terminal. `logs <scheduler|dag-processor|api|triggerer>`
+follows one's output (`$NGT_DEV_HOME/logs/airflow_<component>.log`), and `stop triggerer` then
+`start` restarts just that one, e.g. to pick up an edited `triggers.py`.
 
 Or let one command do all of that from a cold start, for a whole scenario file (see "Playing a
 scenario against Airflow" below):
@@ -887,7 +888,7 @@ Two independent layers of state can go stale, and clearing one doesn't clear the
   first. **Caution**: `./scenario-player/sim_env.sh reset` while Airflow is running is not safe
   -- confirmed live, doing this while Airflow's triggerer had in-flight watcher triggers
   (`ngt_dags_watch.py`'s `AssetWatcher`s) left them stuck polling stale state indefinitely
-  (needing a process restart to recover), and silently orphaned each tmux process's own console
+  (needing a process restart to recover), and silently orphaned each Airflow process's own
   log. If Airflow is running, use `./airflow_automation/airflow_demo/airflow_demo.sh reset-scenario`
   instead (below).
 
@@ -897,7 +898,7 @@ Two independent layers of state can go stale, and clearing one doesn't clear the
   ```bash
   ./airflow_automation/airflow_demo/airflow_demo.sh reset-watch      # clear ngt_dags_watch.py's 4 DAGs + its static Assets
   ./airflow_automation/airflow_demo/airflow_demo.sh reset-airflow    # full reset: all DAG-run history, variables, connections --
-                                          # everything. Stops/restarts the 4 tmux processes
+                                          # everything. Stops/restarts the 4 processes
                                           # around it automatically if they were running (each
                                           # one crashes on its own next DB query otherwise --
                                           # they hold in-memory state tied to the old schema)

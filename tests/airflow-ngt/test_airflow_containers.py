@@ -284,7 +284,7 @@ def test_demo_script_sets_up_in_a_container_without_venv_or_psql(tmp_path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     called = tmp_path / "called"
-    for tool in ("airflow", "pip", "psql", "createdb", "tmux"):
+    for tool in ("airflow", "pip", "psql", "createdb"):
         path = fake_bin / tool
         path.write_text(f'#!/bin/sh\necho "{tool} $*" >> "{called}"\n', encoding="utf-8")
         path.chmod(0o755)

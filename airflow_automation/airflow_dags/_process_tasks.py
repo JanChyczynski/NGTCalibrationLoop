@@ -32,8 +32,8 @@ FILE_POLL_INTERVAL_SECONDS = float(os.environ.get("NGT_FILE_POLL_SECONDS", 5))
 # giving up -- see triggers.LumisectionFileWatcherTrigger's docstring for why
 # this is a separate, run-end-relative timer from step2's own
 # (run-start-relative) max_latch_time_hours.
-# airflow_automation/airflow_demo/airflow_demo.sh's demo_env_exports overrides
-# it to something short for the live-test setup.
+# airflow_automation/airflow_demo/airflow_env.sh overrides it to something short
+# for the live-test setup.
 RUN_END_GRACE_SECONDS = float(
     os.environ.get("NGT_RUN_END_GRACE_SECONDS", DEFAULT_RUN_END_GRACE_SECONDS)
 )

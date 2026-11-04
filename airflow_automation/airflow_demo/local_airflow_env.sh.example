@@ -4,9 +4,8 @@
 # wins. It sees $REPO_DIR, $NGT_DEV_HOME, $NGT_INSTANCE and $NGT_INSTANCE_HASH (rename the
 # instance in scenario-player/local_sim_env.sh -- see local_sim_env.sh.example -- to change
 # what the defaults below derive from). A setting made here beats the same variable exported in
-# your shell, and either way reaches all four Airflow processes: airflow_demo.sh hands its tmux
-# sessions the values exactly as it resolved them. NGT_SKIP_LOCAL_ENV=1 in the environment skips
-# this file (the test suite sets it).
+# your shell, and either way reaches all four Airflow processes, which inherit it from
+# airflow_demo.sh. NGT_SKIP_LOCAL_ENV=1 in the environment skips this file (the test suite sets it).
 #
 # Not executed on its own -- no shebang or `export` needed. Everything is shown with its default.
 
@@ -36,8 +35,8 @@
 # Left alone, follows NGT_AIRFLOW_PORT; set only to point workers at a differently-reached API server.
 #AIRFLOW__CORE__EXECUTION_API_SERVER_URL="http://localhost:$NGT_AIRFLOW_PORT/execution/"
 
-# Prefix of the four tmux sessions (<prefix>Scheduler, DagProcessor, ApiServer, Triggerer).
-#NGT_AIRFLOW_TMUX_PREFIX="NGTAirflow_${NGT_INSTANCE}_"
+# How long `airflow_demo.sh stop` gives a component's processes to finish before killing them, seconds.
+#NGT_AIRFLOW_STOP_SECONDS=30
 
 # Which DAGs Airflow loads, executor, example DAGs.
 #AIRFLOW__CORE__DAGS_FOLDER="$REPO_DIR/airflow_automation/airflow_dags"

@@ -53,7 +53,7 @@ spec:
             # Keeps LocalExecutor's worker processes within the memory limit below.
             - name: AIRFLOW__CORE__PARALLELISM
               value: "8"
-            # See airflow_demo.sh's demo_env_exports.
+            # See airflow_env.sh.
             - name: NGT_RUN_END_GRACE_SECONDS
               value: "20"
           ports:

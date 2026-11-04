@@ -8,20 +8,19 @@
 # env vars only (executor, DB, DAGs folder, auth). The engine-agnostic half
 # (scratch env location, fake toolchain bootstrap) lives in scenario-player/sim_env.sh,
 # sourced below; the fake OMS/EOS/CMSSW toolchain env vars are in the
-# $NGT_DEV_HOME/env.sh its sim_setup writes, which airflow_demo.sh's tmux sessions
-# source on top of the values resolved here.
+# $NGT_DEV_HOME/env.sh its sim_setup writes, which airflow_demo.sh starts Airflow's
+# processes with, on top of the values resolved here.
 #
 # Isolation between instances: every value below that could collide between two checkouts
 # of this repo, or two $NGT_DEV_HOMEs of one, on one machine (Airflow home, metadata DB,
-# API-server port, log-server ports, tmux session names) defaults to something derived from
+# API-server port, log-server ports) defaults to something derived from
 # $NGT_INSTANCE (sim_env.sh: this checkout's basename + a hash of its path and of a
 # non-default $NGT_DEV_HOME) or $NGT_INSTANCE_HASH, so they can run side by side with no
 # configuration.
 # Every one of them is overridable -- from the environment, or persistently from the
 # gitignored local_airflow_env.sh next to this file (which beats the environment); see
-# local_airflow_env.sh.example. Either way the value reaches all four Airflow processes:
-# airflow_demo.sh hands its tmux sessions the settings exactly as resolved here instead of
-# letting them inherit the tmux server's environment (see its write_session_env).
+# local_airflow_env.sh.example. Either way the value reaches all four Airflow processes, which
+# inherit it from airflow_demo.sh.
 #
 # Usage: source airflow_automation/airflow_demo/airflow_env.sh
 
@@ -110,11 +109,16 @@ export AIRFLOW__CORE__EXECUTION_API_SERVER_URL="${AIRFLOW__CORE__EXECUTION_API_S
 # specifically.
 export AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS="${AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS:-True}"
 
-# Prefix of the four tmux sessions airflow_demo.sh manages (<prefix>Scheduler, DagProcessor,
-# ApiServer, Triggerer). tmux session names are global to one tmux server, so without a
-# per-instance prefix a second instance's `start` would find the first one's sessions
-# already running and silently do nothing.
-export NGT_AIRFLOW_TMUX_PREFIX="${NGT_AIRFLOW_TMUX_PREFIX:-NGTAirflow_${NGT_INSTANCE}_}"
+# How long a file watcher keeps waiting after a run ends: read by _process_tasks.py, in the
+# scheduler (which executes task callables under LocalExecutor) and the triggerer (which runs the
+# file watchers). Production default (triggers.DEFAULT_RUN_END_GRACE_SECONDS) is 30 min; 20s here is
+# comfortably above NGT_FILE_POLL_SECONDS (5s) without racing a normal in-flight poll, so a
+# scenario's end-run resolves in seconds instead of minutes.
+export NGT_RUN_END_GRACE_SECONDS="${NGT_RUN_END_GRACE_SECONDS:-20}"
+
+# How long airflow_demo.sh's stop gives a component's processes to finish before killing them:
+# Airflow escalates on a task that's still running by itself, which takes up to 15 s.
+NGT_AIRFLOW_STOP_SECONDS="${NGT_AIRFLOW_STOP_SECONDS:-30}"
 
 # $REPO_DIR for ngt_calibration_loop; airflow_automation/ so the DAG files
 # can `import airflow_dags` (the package name, unchanged by the directory move --

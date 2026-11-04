@@ -84,7 +84,7 @@ through `scenario-player/live_demo.sh` against the real FSM loops in tmux. `pyli
 isort flake8` and running each on the targets listed in that workflow's `LINT_TARGETS`
 reproduces CI.
 
-For running Airflow itself, the live tmux-based demos, or `scenario-player/scenario_player.py`
+For running Airflow itself, the live demos, or `scenario-player/scenario_player.py`
 scenarios, see README.md's "Setting up and running Airflow", "Running Airflow in containers",
 "Running a live demo of the loops" and "Running a live demo with Airflow" sections, and your local override file for this
 machine's exact setup. Don't re-document those commands here — one of the two copies will drift.

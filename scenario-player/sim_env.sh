@@ -142,8 +142,7 @@ sim_reset() {
 # (NGT_INSTANCE, NGT_DEV_HOME, AIRFLOW_HOME, ...), it would make them the default of every
 # later shell, where another checkout's scripts would take them for their own and act on
 # this checkout's state. So the client runs without any NGT_*/AIRFLOW_* variable, and a
-# session's command has to bring its own: live_demo.sh's source $NGT_DEV_HOME/env.sh,
-# airflow_demo.sh's the settings file its start writes.
+# session's command has to bring its own: live_demo.sh's source $NGT_DEV_HOME/env.sh.
 ngt_tmux_new_session() {
   local v unset_args=()
   for v in $(compgen -e); do

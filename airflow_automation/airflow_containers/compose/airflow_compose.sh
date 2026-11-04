@@ -5,7 +5,7 @@
 # secrets, and forwards everything about the demo itself to airflow_demo.sh inside a one-shot
 # container, where it finds the same volumes and database as the services.
 #
-# Needs Docker with Compose v2 -- no Airflow venv, no Postgres and no tmux on the host.
+# Needs Docker with Compose v2 -- no Airflow venv and no Postgres on the host.
 #
 # Quick start:
 #   ./airflow_automation/airflow_containers/compose/airflow_compose.sh play scenario-player/scenarios/basic_ecal_pedestals.yaml
@@ -26,7 +26,6 @@ export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ngt_airflow_$NGT_INSTANCE}"
 export NGT_AIRFLOW_IMAGE="${NGT_AIRFLOW_IMAGE:-ngt-airflow:$NGT_INSTANCE}"
 # What docker-compose.yaml reads, also when only local_airflow_env.sh sets it. Unset stays unset.
 export NGT_AIRFLOW_ALL_ADMINS NGT_AIRFLOW_USERS NGT_CONTAINER_UID NGT_POSTGRES_IMAGE NGT_AIRFLOW_BASE_IMAGE
-export NGT_RUN_END_GRACE_SECONDS
 
 SERVICES=(airflow-api-server airflow-scheduler airflow-dag-processor airflow-triggerer)
 ENV_FILE="${NGT_COMPOSE_ENV_FILE:-$COMPOSE_DIR/.env}"
@@ -128,7 +127,7 @@ cmd_logins() {
 }
 
 reset_with_services_stopped() {
-  # As airflow_demo.sh's own reset-* do around their tmux sessions: running components hold state
+  # As airflow_demo.sh's own reset-* do around its processes: running components hold state
   # tied to what's being wiped.
   local was_running=0
   if any_running; then
