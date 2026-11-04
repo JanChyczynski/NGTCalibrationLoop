@@ -67,9 +67,10 @@ NGT_SIM_GLOBAL_TAG="${NGT_SIM_GLOBAL_TAG:-160X_dataRun3_ExpressNGT_v0}"
 # below -- checked upfront so a forgotten `source .../activate` fails with a
 # clear message here instead of pip's much less obvious
 # "externally-managed-environment" error (Debian/Ubuntu's system Python
-# refuses `pip install` outright, per PEP 668).
+# refuses `pip install` outright, per PEP 668). NGT_SIM_STUB_INSTALLED=1 skips
+# both, for an environment that already has the stub, like a container image.
 sim_setup() {
-  if [ -z "${VIRTUAL_ENV:-}" ]; then
+  if [ -z "${VIRTUAL_ENV:-}" ] && [ -z "${NGT_SIM_STUB_INSTALLED:-}" ]; then
     echo "sim_setup needs an active Python venv (for 'pip install -e tests/stubs')." >&2
     echo "Activate one first, e.g.:" >&2
     echo "  source ~/airflow3-ngt-venv/bin/activate" >&2
@@ -118,7 +119,9 @@ ENV
   # Makes the fake `omsapi` package importable by whatever Python process is
   # actually running the engine's workers. Harmless no-op for an engine that
   # doesn't need it.
-  pip install -e "$REPO_DIR/tests/stubs" -q
+  if [ -z "${NGT_SIM_STUB_INSTALLED:-}" ]; then
+    pip install -e "$REPO_DIR/tests/stubs" -q
+  fi
 }
 
 # sim_reset: wipe all simulator state -- every fake run/lumisection/EOS file/
