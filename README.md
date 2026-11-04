@@ -622,7 +622,7 @@ sudo -u postgres psql -c "CREATE ROLE airflow_ngt WITH LOGIN CREATEDB PASSWORD '
 # 3. Initialize Airflow: create this checkout's database and migrate it
 ./airflow_automation/airflow_demo/airflow_demo.sh setup
 #    -- by hand instead: `source airflow_automation/airflow_demo/airflow_env.sh` (AIRFLOW_HOME,
-#    executor, DB, DAGs folder, auth), `createdb` the database it names, then `airflow db migrate`
+#    DB, DAGs folder, auth), `createdb` the database it names, then `airflow db migrate`
 ```
 
 **Running several checkouts side by side.** Everything that could collide between two clones of

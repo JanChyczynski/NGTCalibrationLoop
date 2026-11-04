@@ -1,122 +1,64 @@
 #!/bin/bash
-# Sourced by airflow_demo.sh (and usable standalone) to configure a local
-# Airflow 3.x instance pointed at this repo's airflow_automation/airflow_dags/, backed by a
-# per-instance database on the local Postgres (see README.md's Airflow setup
-# section for why, and for how the `airflow_ngt` role was created).
+# The settings of a local Airflow 3 instance running this repo's DAGs, against a per-instance database
+# on the local Postgres (README.md's Airflow setup section). Sourced by airflow_demo.sh, and usable by
+# hand: source airflow_automation/airflow_demo/airflow_env.sh
 #
-# This is the Airflow-*specific* half of the live-test setup -- infrastructure
-# env vars only (executor, DB, DAGs folder, auth). The engine-agnostic half
-# (scratch env location, fake toolchain bootstrap) lives in scenario-player/sim_env.sh,
-# sourced below; the fake OMS/EOS/CMSSW toolchain env vars are in the
-# $NGT_DEV_HOME/env.sh its sim_setup writes, which airflow_demo.sh starts Airflow's
-# processes with, on top of the values resolved here.
-#
-# Isolation between instances: every value below that could collide between two checkouts
-# of this repo, or two $NGT_DEV_HOMEs of one, on one machine (Airflow home, metadata DB,
-# API-server port, log-server ports) defaults to something derived from
-# $NGT_INSTANCE (sim_env.sh: this checkout's basename + a hash of its path and of a
-# non-default $NGT_DEV_HOME) or $NGT_INSTANCE_HASH, so they can run side by side with no
-# configuration.
-# Every one of them is overridable -- from the environment, or persistently from the
-# gitignored local_airflow_env.sh next to this file (which beats the environment); see
-# local_airflow_env.sh.example. Either way the value reaches all four Airflow processes, which
-# inherit it from airflow_demo.sh.
-#
-# Usage: source airflow_automation/airflow_demo/airflow_env.sh
+# Whatever could collide between two checkouts, or two $NGT_DEV_HOMEs of one, derives from
+# $NGT_INSTANCE or $NGT_INSTANCE_HASH (sim_env.sh), so they can run side by side with no configuration.
+# All of it is overridable, from the environment or the gitignored local_airflow_env.sh next to this
+# file, which beats the environment: see local_airflow_env.sh.example.
 
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scenario-player" && pwd)/sim_env.sh"
 
-# Optional, gitignored per-checkout overrides. Sourced first, so plain `VAR=value` lines in
-# it win over the `${VAR:-default}` defaults below; it sees $REPO_DIR, $NGT_DEV_HOME,
-# $NGT_INSTANCE and $NGT_INSTANCE_HASH (sim_env.sh has already run, including its own
-# local_sim_env.sh). Skipped under NGT_SKIP_LOCAL_ENV=1, like that one.
 # shellcheck disable=SC1091
 if [ -z "${NGT_SKIP_LOCAL_ENV:-}" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/local_airflow_env.sh" ]; then
   source "$(dirname "${BASH_SOURCE[0]}")/local_airflow_env.sh"
 fi
 
-# The venv airflow_demo.sh activates (see README.md's setup
-# section). Shared between checkouts by default -- it holds no per-checkout state, apart
-# from the editable installs `sim_setup` makes, which any checkout can safely repeat.
+# Shared between checkouts: it holds no per-checkout state, apart from sim_setup's editable installs.
 export NGT_AIRFLOW_VENV="${NGT_AIRFLOW_VENV:-$HOME/airflow3-ngt-venv}"
 
-# Named distinctly from a pre-existing Airflow 2.x install rather than
-# reusing its AIRFLOW_HOME/database in place -- an in-place major-version
-# upgrade is real work Airflow supports, but not something worth doing for a
-# disposable dev/demo instance; a fresh, separately-named one sidesteps a
-# schema mismatch without touching (or needing) whatever was there before.
-# Per instance, so two instances never share an airflow.cfg (and with it the JWT
-# secrets the API server and its workers must agree on) or task logs.
+# Per instance, so that two never share an airflow.cfg (and with it the JWT secrets the API server
+# and its workers must agree on) or task logs.
 export AIRFLOW_HOME="${AIRFLOW_HOME:-$HOME/airflow3-ngt-$NGT_INSTANCE}"
 
-# Metadata DB: a per-instance database owned by the shared `airflow_ngt` role -- it holds the
-# Asset watermarks, which describe the runs under one $NGT_DEV_HOME.
-# `airflow_demo.sh setup` creates it (that role has CREATEDB) and migrates it, so nothing
-# needs doing by hand. Without this, two instances would share one DB and fight over its
-# DAGs, and `reset-airflow` in either would wipe the other's state.
+# Per instance: it holds the Asset watermarks, which describe the runs under one $NGT_DEV_HOME.
+# `airflow_demo.sh setup` creates it. Set AIRFLOW__DATABASE__SQL_ALCHEMY_CONN to use any other
+# database, which `setup` then leaves creating to you.
 export NGT_AIRFLOW_DB_HOST="${NGT_AIRFLOW_DB_HOST:-localhost}"
 export NGT_AIRFLOW_DB_PORT="${NGT_AIRFLOW_DB_PORT:-5432}"
 export NGT_AIRFLOW_DB_USER="${NGT_AIRFLOW_DB_USER:-airflow_ngt}"
 export NGT_AIRFLOW_DB_PASSWORD="${NGT_AIRFLOW_DB_PASSWORD:-airflow_ngt}"
 export NGT_AIRFLOW_DB_NAME="${NGT_AIRFLOW_DB_NAME:-airflow3_ngt_$NGT_INSTANCE}"
 export NGT_AIRFLOW_DB_CONN="postgresql+psycopg2://$NGT_AIRFLOW_DB_USER:$NGT_AIRFLOW_DB_PASSWORD@$NGT_AIRFLOW_DB_HOST:$NGT_AIRFLOW_DB_PORT/$NGT_AIRFLOW_DB_NAME"
-# Set AIRFLOW__DATABASE__SQL_ALCHEMY_CONN itself to point at any other database (e.g. a
-# remote one); `setup` then leaves creating it to you.
 export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN:-$NGT_AIRFLOW_DB_CONN}"
 
 export AIRFLOW__CORE__DAGS_FOLDER="${AIRFLOW__CORE__DAGS_FOLDER:-$REPO_DIR/airflow_automation/airflow_dags}"
 export AIRFLOW__CORE__LOAD_EXAMPLES="${AIRFLOW__CORE__LOAD_EXAMPLES:-False}"
-export AIRFLOW__CORE__EXECUTOR="${AIRFLOW__CORE__EXECUTOR:-LocalExecutor}"
-
-# Airflow 3 splits DAG parsing out of the scheduler into its own mandatory
-# `airflow dag-processor` process (airflow standalone starts it) and
-# renamed these two settings out of [scheduler] accordingly -- confirmed via
-# `airflow config lint` against this repo's old (Airflow 2) settings.
 export AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL="${AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL:-15}"
 export AIRFLOW__DAG_PROCESSOR__MIN_FILE_PROCESS_INTERVAL="${AIRFLOW__DAG_PROCESSOR__MIN_FILE_PROCESS_INTERVAL:-10}"
-
-# Likewise `[webserver] expose_config` moved to `[api] expose_config` now that
-# the API server is its own component rather
-# than part of a combined webserver process.
 export AIRFLOW__API__EXPOSE_CONFIG="${AIRFLOW__API__EXPOSE_CONFIG:-True}"
 
-# This UI has no login and makes everyone admin (below), so it listens on this machine only, not
-# Airflow's default of every interface. A browser on the Windows side of WSL still reaches it, at
-# http://localhost:<port>, through WSL's localhost forwarding; the WSL VM's own IP no longer does.
+# No login, and everyone is admin: right for an offline, single-user instance (README.md's Airflow
+# setup section), so it listens on this machine only. A browser on the Windows side of WSL still
+# reaches it at http://localhost:<port>, but not at the WSL VM's own IP.
+export AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS="${AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS:-True}"
 export AIRFLOW__API__HOST="${AIRFLOW__API__HOST:-127.0.0.1}"
 
-# Ports. The API server/UI gets 8100-8899, picked from the instance hash so two
-# instances don't land on the same one; the scheduler's and triggerer's task-log servers
-# (Airflow's own defaults, 8793/8794, are the same for every instance) are offset from it.
-# A collision on the hash is possible but unlikely -- override NGT_AIRFLOW_PORT if it happens.
+# The UI gets 8100-8899, from the instance hash (a collision is possible but unlikely: override
+# NGT_AIRFLOW_PORT if it happens). The task-log servers' defaults are the same for every instance.
+# Tasks reach the metadata DB through the API server, so they have to be told its port too.
 export NGT_AIRFLOW_PORT="${NGT_AIRFLOW_PORT:-$((8100 + NGT_INSTANCE_HASH % 800))}"
 export AIRFLOW__API__PORT="$NGT_AIRFLOW_PORT"
 export AIRFLOW__LOGGING__WORKER_LOG_SERVER_PORT="${AIRFLOW__LOGGING__WORKER_LOG_SERVER_PORT:-$((NGT_AIRFLOW_PORT + 1000))}"
 export AIRFLOW__LOGGING__TRIGGER_LOG_SERVER_PORT="${AIRFLOW__LOGGING__TRIGGER_LOG_SERVER_PORT:-$((NGT_AIRFLOW_PORT + 2000))}"
-
-# Task code can no longer reach Airflow's metadata DB directly (Airflow 3
-# isolates task execution from the metadata database) -- it talks to the API
-# server over HTTP instead, so the API server's own worker-facing "execution
-# API" URL has to be told which host:port it's actually listening on
-# (AIRFLOW__API__PORT above; this must match).
 export AIRFLOW__CORE__EXECUTION_API_SERVER_URL="${AIRFLOW__CORE__EXECUTION_API_SERVER_URL:-http://localhost:$NGT_AIRFLOW_PORT/execution/}"
 
-# Simple Auth Manager (Airflow 3's dev/test-oriented default, replacing FAB)
-# treats every request as admin with no username/password needed -- exactly
-# what an offline, single-user dev/demo instance like this one wants; see
-# README.md's Airflow setup section for why this is an appropriate fit here
-# specifically.
-export AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS="${AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS:-True}"
-
-# How long a file watcher keeps waiting after a run ends: read by _process_tasks.py, in the
-# scheduler (which executes task callables under LocalExecutor) and the triggerer (which runs the
-# file watchers). Production default (triggers.DEFAULT_RUN_END_GRACE_SECONDS) is 30 min; 20s here is
-# comfortably above NGT_FILE_POLL_SECONDS (5s) without racing a normal in-flight poll, so a
-# scenario's end-run resolves in seconds instead of minutes.
+# How long a file watcher keeps waiting after a run ends. Production's default is 30 min; 20 s is
+# comfortably above NGT_FILE_POLL_SECONDS (5 s), so a scenario's end-run resolves in seconds.
 export NGT_RUN_END_GRACE_SECONDS="${NGT_RUN_END_GRACE_SECONDS:-20}"
 
-# $REPO_DIR for ngt_calibration_loop; airflow_automation/ so the DAG files
-# can `import airflow_dags` (the package name, unchanged by the directory move --
-# it's also baked into the triggers' serialized classpaths in Airflow's DB).
+# $REPO_DIR for ngt_calibration_loop; airflow_automation/ so the DAG files can `import airflow_dags`,
+# a name also baked into the triggers' serialized classpaths in Airflow's DB.
 export PYTHONPATH="$REPO_DIR:$REPO_DIR/airflow_automation:${PYTHONPATH:-}"
