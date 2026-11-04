@@ -352,6 +352,9 @@ The same mocks as above apply, except that job launches are intercepted one leve
 - `tests/airflow-ngt/test_airflow_openshift.py` -- the OpenShift example without a cluster: that what `oc apply -k`
   creates asks for nothing the restricted SCC would reject, fits a project's default quota, and that its Route
   stays CERN-only. The tests that render the overlay skip without `kubectl`.
+- `tests/airflow-ngt/test_airflow_cern_sso.py` -- the CERN SSO layer without a container runtime: that the roles come
+  from the ID token, and who that makes an Admin. Its slow counterpart, `test_airflow_cern_sso_live.py`, also runs under
+  `pytest -m container`: it logs in, the way a browser does, through a Keycloak set up like CERN's SSO (`cern_sso_standin/`).
 
 ## The offline simulator (`scenario-player/`)
 

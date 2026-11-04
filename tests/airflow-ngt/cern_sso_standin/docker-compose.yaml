@@ -1,0 +1,26 @@
+# For test_airflow_cern_sso_live.py: on top of onepod/docker-compose.yaml, the cern-sso layer's settings, and
+# a Keycloak set up the way CERN's SSO is (realm-cern.json), in the pod's network namespace. So the
+# issuer's address is the same for Airflow and for whoever's browser it sends there.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:18180:18180"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--http-port=18180", "--http-relative-path=/auth", "--import-realm"]
+    network_mode: "service:postgres"
+    environment:
+      KC_LOG_LEVEL: WARN
+    volumes:
+      - ${NGT_SSO_STANDIN_DIR:?set by the test}/realm-cern.json:/opt/keycloak/data/import/realm-cern.json:ro
+    depends_on:
+      - postgres
+
+  airflow:
+    environment:
+      AIRFLOW__FAB__CONFIG_FILE: /opt/ngt/airflow_automation/airflow_containers/cern-sso/webserver_config.py
+      AIRFLOW__FAB__ENABLE_PROXY_FIX: "True"
+      sso_clientID: ngt-airflow
+      sso_clientSecret: not-a-secret
+      sso_issuerURL: http://localhost:18180/auth/realms/cern

@@ -35,7 +35,8 @@ specific to one person's OS/venv/process setup belongs in a local, gitignored ov
   - `airflow_containers/` — the same in containers, from one image (`Dockerfile`): `compose/`
     (one container per Airflow component, driven by `airflow_compose.sh`), `onepod/` (everything
     in one pod on any Kubernetes cluster), `openshift/` (that pod on CERN's OpenShift, an example of a
-    cluster's own overlay and tutorial). Its `README.md` is the deployment tutorial. Inside a container,
+    cluster's own overlay and tutorial), `cern-sso/` (a layer on that pod, logging in through CERN's
+    SSO). Its `README.md` is the deployment tutorial. Inside a container,
     `airflow_demo.sh` still does everything but the process management (`NGT_AIRFLOW_IN_CONTAINER`).
 - `scenario-player/` — the engine-agnostic offline simulator, with no Airflow dependency:
   `sim_env.sh`, `live_demo.sh` (runs the FSM loops in tmux against it), `seed.py`,
@@ -94,13 +95,14 @@ machine's exact setup. Don't re-document those commands here — one of the two 
   without committing them.
 - Match the log style: a short, imperative subject that starts with the part of the repo it
   affects -- `Airflow-general:`, `Airflow-asset-watch-prototype:`, `Airflow-openshift:`,
-  `Tests:`, `Scenario-tests:`, `Core:`, `Fix:`, `Docs:`, `Research:`, `Repo:` -- optionally with a
+  `Airflow-cern-sso:`, `Tests:`, `Scenario-tests:`, `Core:`, `Fix:`, `Docs:`, `Research:`, `Repo:` -- optionally with a
   trailing parenthetical or `--` clause explaining why. Not Conventional Commits. Keep
   engine-agnostic changes (tests, mocks, scenario player, core library) in separate commits
   from Airflow-specific ones, and put each prototype's code, tests, demo wiring and design
   doc behind that prototype's own prefix, so a prototype can be reviewed or dropped as a unit.
   The same goes for one cluster: `airflow_containers/` stays cluster-neutral, and OpenShift is just
   one example of where it runs, so its overlay, tutorial and tests go behind `Airflow-openshift:`.
+  Likewise CERN's SSO, a layer on top that nothing else depends on, behind `Airflow-cern-sso:`.
 - A session's commits can be reorganized afterward into fewer, more coherent ones if they
   ended up too granular — but only on unpushed work, and only after creating a backup
   branch first: `git branch backup/<branch>-<YYYYMMDD>[-<short-note>]` (see this repo's

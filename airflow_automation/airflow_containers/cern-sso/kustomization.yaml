@@ -1,0 +1,27 @@
+# The one-pod deployment logging in through CERN's SSO. A Component, for whichever overlay deploys it
+# to add with `components: [.../cern-sso]`: see README.md.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: ngt-airflow
+      spec:
+        template:
+          spec:
+            containers:
+              - name: airflow
+                envFrom:
+                  # sso_clientID, sso_clientSecret and sso_issuerURL, for webserver_config.py.
+                  - prefix: sso_
+                    secretRef:
+                      name: oidc-client-secret
+                env:
+                  - name: AIRFLOW__FAB__CONFIG_FILE
+                    value: /opt/ngt/airflow_automation/airflow_containers/cern-sso/webserver_config.py
+                  # The address the SSO sends people back to has to be the https:// one they came from,
+                  # which only whatever terminates TLS in front of this pod knows.
+                  - name: AIRFLOW__FAB__ENABLE_PROXY_FIX
+                    value: "True"
