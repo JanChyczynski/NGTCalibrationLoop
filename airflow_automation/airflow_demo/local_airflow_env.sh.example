@@ -35,7 +35,7 @@
 # Left alone, follows NGT_AIRFLOW_PORT; set only to point workers at a differently-reached API server.
 #AIRFLOW__CORE__EXECUTION_API_SERVER_URL="http://localhost:$NGT_AIRFLOW_PORT/execution/"
 
-# How long `airflow_demo.sh stop` gives a component's processes to finish before killing them, seconds.
+# How long `airflow_demo.sh stop` gives Airflow's processes to finish before killing them, seconds.
 #NGT_AIRFLOW_STOP_SECONDS=30
 
 # Which DAGs Airflow loads, executor, example DAGs.

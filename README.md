@@ -676,7 +676,7 @@ instructions for EOS access, `COND_AUTH_PATH` credentials for the condDB upload,
 production-grade Airflow deployment (Postgres/MySQL metadata DB, `LocalExecutor` or
 `CeleryExecutor`, a real auth manager instead of Simple Auth Manager's all-admins mode, the
 DAGs folder pointed at this repo's `airflow_automation/airflow_dags/`, and the scheduler/dag-processor/API-server
-processes run as proper services rather than `airflow_demo.sh`'s background processes).
+processes run as proper services rather than `airflow_demo.sh`'s `airflow standalone`).
 
 If the calibration nodes are actually a **pool** of worker machines rather than one host, one
 more thing needs deciding before rollout: Step 2's output is too large for shared storage to
@@ -804,7 +804,7 @@ $DATA_BASE_PATH/{calibration}/
 
 ## Running a live demo with Airflow
 
-`airflow_automation/airflow_demo/airflow_demo.sh` runs the real Airflow scheduler + dag-processor + API server + triggerer (as background processes)
+`airflow_automation/airflow_demo/airflow_demo.sh` runs the real Airflow scheduler + dag-processor + API server + triggerer (one background `airflow standalone`)
 against the same fake OMS/EOS/CMSSW toolchain in `scenario-player/bin/` (fake `cmsDriver.py`, `cmsRun`,
 `edmFileUtil`, `xrdfs`, `cmsrel`, `cmsenv`, `uploadConditions.py`) and `scenario-player/seed.py` used by the
 tests -- bootstrapped via `scenario-player/sim_env.sh`'s `sim_setup`, shared with
@@ -821,13 +821,15 @@ Windows).
 ./airflow_automation/airflow_demo/airflow_demo.sh ui                                    # print the UI URL
 ./airflow_automation/airflow_demo/airflow_demo.sh add-ls EcalPedestals 398600 53         # simulate a new lumisection arriving
 ./airflow_automation/airflow_demo/airflow_demo.sh end-run 398600                         # simulate the run ending
-./airflow_automation/airflow_demo/airflow_demo.sh status                                 # whether each process is running, stopped or has died
+./airflow_automation/airflow_demo/airflow_demo.sh status                                 # whether it's running, and each component's health
 ./airflow_automation/airflow_demo/airflow_demo.sh stop                                   # tear down all four processes
 ```
 
-The four processes run detached from your terminal. `logs <scheduler|dag-processor|api|triggerer>`
-follows one's output (`$NGT_DEV_HOME/logs/airflow_<component>.log`), and `stop triggerer` then
-`start` restarts just that one, e.g. to pick up an edited `triggers.py`.
+`airflow standalone` runs detached from your terminal, with its four components' output in one log
+(`$NGT_DEV_HOME/logs/airflow.log`): `logs [scheduler|dag-processor|api-server|triggerer]` follows all
+of it, or one component's lines. It doesn't restart a component that dies, so `status` is where that
+shows; `stop` then `start` restarts all four, which is also how to pick up an edited `triggers.py`.
+Airflow documents it for local development only, which is all this is.
 
 Or let one command do all of that from a cold start, for a whole scenario file (see "Playing a
 scenario against Airflow" below):
@@ -857,7 +859,7 @@ for the paced walkthrough above. `play` plays a whole scenario file instead, mir
 ```
 
 It sets up `$NGT_DEV_HOME` and this checkout's Airflow database if they aren't there, starts
-whichever of the four processes aren't running, unpauses the watch DAGs and waits until the
+Airflow if it isn't running, unpauses the watch DAGs and waits until the
 triggerer is running their watchers, then passes every argument straight to
 `scenario-player/scenario_player.py` (see "Scripting a timed sequence of runs/lumisections"
 above for its flags). `--dry-run`, `--validate-only` and `--help` skip the bring-up, since they

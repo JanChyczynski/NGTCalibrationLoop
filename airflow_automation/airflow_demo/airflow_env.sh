@@ -70,14 +70,14 @@ export AIRFLOW__CORE__LOAD_EXAMPLES="${AIRFLOW__CORE__LOAD_EXAMPLES:-False}"
 export AIRFLOW__CORE__EXECUTOR="${AIRFLOW__CORE__EXECUTOR:-LocalExecutor}"
 
 # Airflow 3 splits DAG parsing out of the scheduler into its own mandatory
-# `airflow dag-processor` process (see airflow_demo.sh's cmd_start) and
+# `airflow dag-processor` process (airflow standalone starts it) and
 # renamed these two settings out of [scheduler] accordingly -- confirmed via
 # `airflow config lint` against this repo's old (Airflow 2) settings.
 export AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL="${AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL:-15}"
 export AIRFLOW__DAG_PROCESSOR__MIN_FILE_PROCESS_INTERVAL="${AIRFLOW__DAG_PROCESSOR__MIN_FILE_PROCESS_INTERVAL:-10}"
 
 # Likewise `[webserver] expose_config` moved to `[api] expose_config` now that
-# the API server (airflow_demo.sh's cmd_start) is its own component rather
+# the API server is its own component rather
 # than part of a combined webserver process.
 export AIRFLOW__API__EXPOSE_CONFIG="${AIRFLOW__API__EXPOSE_CONFIG:-True}"
 
@@ -91,6 +91,7 @@ export AIRFLOW__API__HOST="${AIRFLOW__API__HOST:-127.0.0.1}"
 # (Airflow's own defaults, 8793/8794, are the same for every instance) are offset from it.
 # A collision on the hash is possible but unlikely -- override NGT_AIRFLOW_PORT if it happens.
 export NGT_AIRFLOW_PORT="${NGT_AIRFLOW_PORT:-$((8100 + NGT_INSTANCE_HASH % 800))}"
+export AIRFLOW__API__PORT="$NGT_AIRFLOW_PORT"
 export AIRFLOW__LOGGING__WORKER_LOG_SERVER_PORT="${AIRFLOW__LOGGING__WORKER_LOG_SERVER_PORT:-$((NGT_AIRFLOW_PORT + 1000))}"
 export AIRFLOW__LOGGING__TRIGGER_LOG_SERVER_PORT="${AIRFLOW__LOGGING__TRIGGER_LOG_SERVER_PORT:-$((NGT_AIRFLOW_PORT + 2000))}"
 
@@ -98,8 +99,7 @@ export AIRFLOW__LOGGING__TRIGGER_LOG_SERVER_PORT="${AIRFLOW__LOGGING__TRIGGER_LO
 # isolates task execution from the metadata database) -- it talks to the API
 # server over HTTP instead, so the API server's own worker-facing "execution
 # API" URL has to be told which host:port it's actually listening on
-# (cmd_start passes $NGT_AIRFLOW_PORT to `airflow api-server -p`; this must
-# match).
+# (AIRFLOW__API__PORT above; this must match).
 export AIRFLOW__CORE__EXECUTION_API_SERVER_URL="${AIRFLOW__CORE__EXECUTION_API_SERVER_URL:-http://localhost:$NGT_AIRFLOW_PORT/execution/}"
 
 # Simple Auth Manager (Airflow 3's dev/test-oriented default, replacing FAB)
@@ -115,10 +115,6 @@ export AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS="${AIRFLOW__CORE__SIMPLE_AU
 # comfortably above NGT_FILE_POLL_SECONDS (5s) without racing a normal in-flight poll, so a
 # scenario's end-run resolves in seconds instead of minutes.
 export NGT_RUN_END_GRACE_SECONDS="${NGT_RUN_END_GRACE_SECONDS:-20}"
-
-# How long airflow_demo.sh's stop gives a component's processes to finish before killing them:
-# Airflow escalates on a task that's still running by itself, which takes up to 15 s.
-NGT_AIRFLOW_STOP_SECONDS="${NGT_AIRFLOW_STOP_SECONDS:-30}"
 
 # $REPO_DIR for ngt_calibration_loop; airflow_automation/ so the DAG files
 # can `import airflow_dags` (the package name, unchanged by the directory move --

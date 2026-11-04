@@ -60,7 +60,7 @@ CALIBRATIONS = pp.CALIBRATIONS
 
 RUN_PRIMER_DAG_ID = "ngt_watch_run_primer"
 
-# Env-overridable poll/grace knobs (airflow_automation/airflow_demo/airflow_demo.sh
+# Env-overridable poll/grace knobs (airflow_automation/airflow_demo/airflow_env.sh
 # sets short values for the live-test setup).
 _WATCH_POLL_SECONDS = pp.FILE_POLL_INTERVAL_SECONDS
 _RUN_END_GRACE_SECONDS = pp.RUN_END_GRACE_SECONDS
